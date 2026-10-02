@@ -1,0 +1,15 @@
+flask>=3.0
+waitress>=3.0
+pillow>=11.2
+pillow-heif>=0.18
+pymupdf>=1.24
+vtracer>=0.6
+pandas>=2.0
+openpyxl>=3.1
+xlrd>=2.0
+odfpy>=1.4
+python-docx>=1.1
+pdf2docx>=0.5.8
+send2trash>=1.8
+markdown>=3.5
+pywin32>=306; sys_platform == "win32"

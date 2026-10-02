@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Everything Converter</title>
+<link rel="icon" href="/web/assets/mascot-light-sm.png">
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+
+<!-- decorative sky: clouds, sparkles, stars (night) -->
+<div class="sky" aria-hidden="true">
+  <svg class="cloud c1" viewBox="0 0 200 90"><path d="M30 80h140a25 25 0 0 0 0-50 35 35 0 0 0-62-16A28 28 0 0 0 58 34 23 23 0 0 0 30 80z"/></svg>
+  <svg class="cloud c2" viewBox="0 0 200 90"><path d="M30 80h140a25 25 0 0 0 0-50 35 35 0 0 0-62-16A28 28 0 0 0 58 34 23 23 0 0 0 30 80z"/></svg>
+  <svg class="cloud c3" viewBox="0 0 200 90"><path d="M30 80h140a25 25 0 0 0 0-50 35 35 0 0 0-62-16A28 28 0 0 0 58 34 23 23 0 0 0 30 80z"/></svg>
+  <svg class="cloud c4" viewBox="0 0 200 90"><path d="M30 80h140a25 25 0 0 0 0-50 35 35 0 0 0-62-16A28 28 0 0 0 58 34 23 23 0 0 0 30 80z"/></svg>
+  <svg class="moon" viewBox="0 0 64 64"><path d="M44 8a26 26 0 1 0 14 40A22 22 0 0 1 44 8z"/></svg>
+  <i class="spark s1"></i><i class="spark s2"></i><i class="spark s3"></i><i class="spark s4"></i><i class="spark s5"></i><i class="spark s6"></i><i class="spark s7"></i>
+  <i class="star t1"></i><i class="star t2"></i><i class="star t3"></i><i class="star t4"></i><i class="star t5"></i><i class="star t6"></i><i class="star t7"></i><i class="star t8"></i><i class="star t9"></i><i class="star t10"></i>
+</div>
+
+<div class="app">
+  <aside class="sidebar win">
+    <div class="titlebar"><span>my_computer</span></div>
+    <div class="buddy">
+      <div class="bubble" id="buddy-say">hi! drop anything on me ✦</div>
+      <img class="mascot float" alt="" id="buddy">
+    </div>
+    <nav id="nav">
+      <a data-view="convert" class="active"><i class="ico i1">⇄</i>Convert</a>
+      <a data-view="tools:PDF"><i class="ico i2">▤</i>PDF tools</a>
+      <a data-view="editor"><i class="ico i3">✎</i>PDF editor</a>
+      <a data-view="tools:Image"><i class="ico i4">▧</i>Image tools</a>
+      <a data-view="tools:Video & Audio"><i class="ico i5">▶</i>Video &amp; audio</a>
+      <a data-view="tools:Data"><i class="ico i6">▦</i>Spreadsheets</a>
+      <a data-view="cleanup"><i class="ico i7">✦</i>Clean up</a>
+    </nav>
+    <div class="side-foot">
+      <div class="caps" id="caps"></div>
+      <div class="offline"><span class="dot"></span>offline · files never leave this PC</div>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar win">
+      <div class="titlebar"><span id="view-title">convert.exe</span></div>
+      <div class="addr">
+        <span class="addr-label">save to</span>
+        <button class="addr-field" id="out-pick" title="Change output folder"><span class="addr-ico">📁</span><span id="out-dir">…</span></button>
+        <button class="icon-btn" id="out-open" title="Open output folder">↗</button>
+      </div>
+    </header>
+
+    <section class="view" id="view-convert"></section>
+    <section class="view" id="view-tools" hidden></section>
+    <section class="view" id="view-editor" hidden></section>
+    <section class="view" id="view-cleanup" hidden></section>
+  </main>
+
+  <aside class="jobs win" id="jobs" hidden>
+    <div class="titlebar"><span>jobs.exe</span><button class="tb-x" id="jobs-close" title="Close">✕</button></div>
+    <div class="jobs-head"><button class="btn ghost sm" id="jobs-clear">Clear finished</button></div>
+    <div id="jobs-list" class="jobs-list"></div>
+  </aside>
+</div>
+
+<footer class="taskbar">
+  <button class="start" id="start"><span class="heart">♥</span>Start</button>
+  <div class="start-menu win" id="start-menu" hidden>
+    <div class="titlebar"><span>start</span></div>
+    <div class="sm-body">
+      <img class="mascot" alt="">
+      <div class="sm-items" id="start-items"></div>
+    </div>
+  </div>
+  <button class="task" id="jobs-toggle"><span class="task-ico">⏳</span>jobs <span class="badge" id="jobs-count">0</span></button>
+  <div class="spacer"></div>
+  <button class="task" id="theme" title="Day / night"><span id="theme-ico">☾</span><span id="theme-label">night</span></button>
+  <div class="clock" id="clock">11:11</div>
+</footer>
+
+<div class="drop-overlay" id="drop-overlay"><div class="win"><div class="titlebar"><span>incoming!</span></div><div class="drop-body"><img class="mascot float" alt="">drop it like it's hot ✦</div></div></div>
+<div class="toast-wrap" id="toasts"></div>
+<div class="modal" id="modal" hidden></div>
+
+<script src="/web/app.js"></script>
+<script src="/web/editor.js"></script>
+</body>
+</html>
