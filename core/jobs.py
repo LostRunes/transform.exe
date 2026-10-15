@@ -26,6 +26,7 @@ class Job:
         self.message = "Waiting…"
         self.outputs: list[str] = []
         self.errors: list[str] = []
+        self.notes: list[str] = []  # e.g. "photo.jpg: 4.2 MB → 980 KB (−77%)"
         self.created = time.time()
         self.finished = None
         self.cancelled = False
@@ -42,6 +43,9 @@ class Job:
         if msg:
             self.message = msg
 
+    def note(self, msg: str):
+        self.notes.append(msg)
+
     def cancel(self):
         self.cancelled = True
         if self._proc:
@@ -53,7 +57,7 @@ class Job:
     def to_dict(self):
         return {"id": self.id, "title": self.title, "status": self.status, "message": self.message,
                 "progress": 1.0 if self.status in ("done", "error") else min(1.0, (self.i + self.sub) / self.n),
-                "outputs": self.outputs, "errors": self.errors, "created": self.created, "finished": self.finished}
+                "outputs": self.outputs, "errors": self.errors, "notes": self.notes, "created": self.created, "finished": self.finished}
 
 
 def _deliver(paths, out_dir: Path) -> list[str]:
@@ -72,7 +76,13 @@ def _deliver(paths, out_dir: Path) -> list[str]:
         else:
             dest = unique_path(out_dir, p.stem, p.suffix.lstrip("."))
         out_dir.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(p), str(dest))
+        try:
+            shutil.move(str(p), str(dest))
+        except OSError as e:
+            if len(str(dest)) >= 250:
+                raise OSError("The output path is too long for Windows. Choose a shorter output folder "
+                              "(click the folder next to “save to”).") from e
+            raise
         delivered.append(str(dest))
     return delivered
 
@@ -150,7 +160,9 @@ def start_convert(items: list[dict], out_dir: str, params: dict) -> Job:
 # ------------------------------------------------------------------ tools
 
 def start_tool(tool_id: str, paths: list[str], out_dir: str, params: dict) -> Job:
-    tool = registry.TOOLS_BY_ID[tool_id]
+    tool = registry.TOOLS_BY_ID.get(tool_id)
+    if tool is None:
+        raise ValueError(f"Unknown tool {tool_id}")
     fn = tool["fn"]
     out = Path(out_dir)
     srcs = [Path(p) for p in paths]

@@ -11,7 +11,9 @@ from pathlib import Path
 
 from send2trash import send2trash
 
-from .util import TMP, UPLOADS, folder_size, human_size
+from .util import TMP, UPLOADS, WORKSPACE, folder_size, human_size
+
+VIDEO_CACHE = WORKSPACE / "video_proxy"  # the video editor's preview copies, thumbnails and waveforms
 
 SKIP_DIRS = {"$Recycle.Bin", "System Volume Information", "Windows", "Program Files", "Program Files (x86)",
              "ProgramData", "AppData", ".git", "node_modules", "__pycache__", ".venv"}
@@ -32,7 +34,7 @@ def temp_locations():
 
 
 def overview():
-    app = folder_size(UPLOADS) + folder_size(TMP)
+    app = folder_size(UPLOADS) + folder_size(TMP) + (folder_size(VIDEO_CACHE) if VIDEO_CACHE.exists() else 0)
     temps = []
     for loc in temp_locations():
         size, count = 0, 0
@@ -48,13 +50,21 @@ def overview():
 
 
 def clear_app_cache():
-    freed = folder_size(UPLOADS) + folder_size(TMP)
-    for d in (UPLOADS, TMP):
+    from .jobs import JOBS
+    busy = {j.work.name for j in list(JOBS.values()) if j.status in ("queued", "running")}
+    freed = 0
+    for d in (UPLOADS, TMP, VIDEO_CACHE):
+        if not d.exists():
+            continue
         for child in d.iterdir():
+            if d == TMP and child.name in busy:
+                continue  # a running job's scratch folder: deleting it would make the job fail
+            size = folder_size(child) if child.is_dir() else child.stat().st_size
             try:
                 shutil.rmtree(child) if child.is_dir() else child.unlink()
+                freed += size
             except OSError:
-                pass  # in use by a running job
+                pass  # in use
     return {"freed": freed, "freed_h": human_size(freed)}
 
 
@@ -186,11 +196,13 @@ def find_large(folder: str, top=200, min_mb=50):
 
 def find_empty_dirs(folder: str):
     empty = []
-    for root, dirs, files in os.walk(folder, topdown=False):
-        if Path(root).name in SKIP_DIRS:
+    for root, dirs, files in os.walk(folder):
+        # same pruning as the other finders: never suggest folders inside .git, node_modules, Windows, …
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
+        if root == folder or files or dirs:
             continue
         try:
-            if not os.listdir(root) and root != folder:
+            if not os.listdir(root):
                 empty.append(root)
         except OSError:
             pass

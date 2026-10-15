@@ -26,7 +26,9 @@
     ["image", "▣", "Image", "Click where to place an image or signature"],
   ];
 
-  function snapshot() { E.undo.push(JSON.stringify(E.edits)); if (E.undo.length > 100) E.undo.shift(); }
+  // Copies arrays (they're mutated while dragging) but shares strings, so image data URLs aren't duplicated per undo step.
+  const cloneEdit = (e) => Object.fromEntries(Object.entries(e).map(([k, v]) => [k, Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : v]));
+  function snapshot() { E.undo.push(E.edits.map(cloneEdit)); if (E.undo.length > 100) E.undo.shift(); }
   function pageEdits() { return E.edits.map((e, i) => [e, i]).filter(([e]) => e.page === E.page); }
 
   // ------------------------------------------------------------ mount / open
@@ -49,12 +51,19 @@
     if (!f) return toast("That's not a PDF", true);
     try {
       const d = await api("/api/pdf/info?path=" + encodeURIComponent(f.path));
-      Object.assign(E, { file: f, pages: d.pages, page: 0, edits: [], undo: [], sel: -1, lines: {}, zoom: 0 });
+      Object.assign(E, { file: f, pages: d.pages, page: 0, edits: [], undo: [], sel: -1, lines: {}, zoom: 0, imgs: new Map() });
       render();
     } catch (e) { fail(e); }
   }
 
   // ------------------------------------------------------------ layout
+  /** Page renders are kept as <img> nodes, so re-drawing the UI after each edit doesn't re-rasterise every page. */
+  function pageImg(src, attrs) {
+    let img = E.imgs.get(src);
+    if (!img) { img = h("img", { ...attrs, src }); E.imgs.set(src, img); }
+    return img;
+  }
+
   function render() {
     const c = E.root;
     if (!E.zoom) {  // fit page width: view width − thumbnails column − gaps/padding/scrollbar
@@ -63,7 +72,7 @@
     }
     const tb = toolbar();
     const thumbs = h("div", { class: "ed-thumbs" }, ...E.pages.map((p, i) => {
-      const img = h("img", { loading: "lazy", src: `/api/pdf/page?path=${encodeURIComponent(E.file.path)}&page=${i}&zoom=${(130 / p.w).toFixed(3)}` });
+      const img = pageImg(`/api/pdf/page?path=${encodeURIComponent(E.file.path)}&page=${i}&zoom=${(130 / p.w).toFixed(3)}`, { loading: "lazy" });
       return h("div", { class: "ed-thumb" + (i === E.page ? " on" : ""), onclick: () => goto(i) }, img,
         h("div", {}, `Page ${i + 1}`, E.edits.some((e) => e.page === i) ? h("span", { class: "dotmark", title: "Has edits" }) : null));
     }));
@@ -121,6 +130,7 @@
       if (k in e || (k === "fill" && ["rect", "ellipse"].includes(e.type)) || (k === "color" && e.type === "text")) {
         if (k === "color" && e.type !== "text") continue;
         if (k === "stroke" && !("stroke" in e)) continue;
+        if (k === "fill" && v === "none" && ["whiteout", "highlight"].includes(e.type)) continue;  // would make them invisible
         e[k] = v;
       }
     }
@@ -133,7 +143,7 @@
     const p = E.pages[E.page], z = E.zoom;
     const dpr = Math.min(3, (window.devicePixelRatio || 1) * z);
     stageEl = h("div", { class: "ed-stage mode-" + E.mode, style: `width:${p.w * z}px;height:${p.h * z}px` },
-      h("img", { class: "pg", src: `/api/pdf/page?path=${encodeURIComponent(E.file.path)}&page=${E.page}&zoom=${dpr.toFixed(3)}`, draggable: "false" }));
+      pageImg(`/api/pdf/page?path=${encodeURIComponent(E.file.path)}&page=${E.page}&zoom=${dpr.toFixed(3)}`, { class: "pg", draggable: "false" }));
     svgEl = sv("svg", { viewBox: `0 0 ${p.w} ${p.h}`, preserveAspectRatio: "none" });
     layerEl = h("div", { class: "ed-layer" });
     stageEl.append(svgEl, layerEl);
@@ -144,8 +154,11 @@
   }
 
   async function loadLines() {
-    if (E.lines[E.page]) return;
-    try { E.lines[E.page] = (await api(`/api/pdf/text?path=${encodeURIComponent(E.file.path)}&page=${E.page}`)).lines; } catch (e) { E.lines[E.page] = []; }
+    const file = E.file, page = E.page, lines = E.lines;  // the user may switch page/file before this returns
+    if (lines[page]) return;
+    let got = [];
+    try { got = (await api(`/api/pdf/text?path=${encodeURIComponent(file.path)}&page=${page}`)).lines; } catch (e) {}
+    lines[page] = got;
   }
 
   const pt = (ev) => { const r = stageEl.getBoundingClientRect(); return [(ev.clientX - r.left) / E.zoom, (ev.clientY - r.top) / E.zoom]; };
@@ -304,13 +317,13 @@
       drawOverlay();
     };
     const up = () => {
-      stageEl.removeEventListener("pointermove", move); stageEl.removeEventListener("pointerup", up);
+      stageEl.removeEventListener("pointermove", move); stageEl.removeEventListener("pointerup", up); stageEl.removeEventListener("pointercancel", up);
       if (e.rect) { const [a, b, c, d] = e.rect; e.rect = [Math.min(a, c), Math.min(b, d), Math.max(a, c), Math.max(b, d)]; if (e.rect[2] - e.rect[0] < 2 && e.rect[3] - e.rect[1] < 2) E.edits.pop(); }
       if (e.p2 && Math.hypot(e.p2[0] - e.p1[0], e.p2[1] - e.p1[1]) < 2) E.edits.pop();
       if (e.points && e.points.length < 2) E.edits.pop();
       refresh();
     };
-    stageEl.addEventListener("pointermove", move); stageEl.addEventListener("pointerup", up);
+    stageEl.addEventListener("pointermove", move); stageEl.addEventListener("pointerup", up); stageEl.addEventListener("pointercancel", up);
   }
 
   function selectDown(ev, x, y) {
@@ -335,8 +348,8 @@
       else if ("x" in e) { e.x += dx; e.y += dy; }
       drawOverlay();
     };
-    const up = () => { stageEl.removeEventListener("pointermove", move); stageEl.removeEventListener("pointerup", up); refresh(); };
-    stageEl.addEventListener("pointermove", move); stageEl.addEventListener("pointerup", up);
+    const up = () => { stageEl.removeEventListener("pointermove", move); stageEl.removeEventListener("pointerup", up); stageEl.removeEventListener("pointercancel", up); refresh(); };
+    stageEl.addEventListener("pointermove", move); stageEl.addEventListener("pointerup", up); stageEl.addEventListener("pointercancel", up);
     drawOverlay();
   }
 
@@ -347,11 +360,21 @@
       const rd = new FileReader();
       rd.onload = () => {
         const img = new Image();
+        img.onerror = () => toast("Couldn't read that image. Try a PNG or JPG.", true);
         img.onload = () => {
           const maxW = 220, k = Math.min(1, maxW / img.width);
           const w = img.width * k, hh = img.height * k;
+          // Big photos ride along in every save request, and SVG/GIF/WebP can't be embedded as-is: redraw as PNG/JPG.
+          let data = rd.result;
+          const big = Math.max(img.width, img.height), cap = 2000;
+          if (big > cap || !/^image\/(png|jpeg)$/.test(f.type)) {
+            const kk = Math.min(1, cap / big), cv = document.createElement("canvas");
+            cv.width = Math.max(1, Math.round(img.width * kk)); cv.height = Math.max(1, Math.round(img.height * kk));
+            cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+            data = f.type === "image/jpeg" ? cv.toDataURL("image/jpeg", 0.9) : cv.toDataURL("image/png");
+          }
           snapshot();
-          E.edits.push({ type: "image", page: E.page, rect: [x, y, x + w, y + hh], data: rd.result });
+          E.edits.push({ type: "image", page: E.page, rect: [x, y, x + w, y + hh], data });
           E.mode = "select"; E.sel = E.edits.length - 1;
           refresh();
           toast("Drag to move, drag the corner square to resize");
@@ -363,7 +386,7 @@
     inp.click();
   }
 
-  function doUndo() { if (!E.undo.length) return; E.edits = JSON.parse(E.undo.pop()); E.sel = -1; refresh(); }
+  function doUndo() { if (!E.undo.length) return; E.edits = E.undo.pop(); E.sel = -1; refresh(); }
 
   addEventListener("keydown", (ev) => {
     if (S.view !== "editor" || !E.file || ev.target.matches("input,textarea,select")) return;
@@ -378,17 +401,22 @@
     const edits = E.edits.map(({ _line, ...e }) => e);
     try {
       const d = await api("/api/pdf/save", { path: E.file.path, edits, out_dir: S.outDir });
-      E.saving = d.job.id; render(); window.App.watchJobs();
+      const id = E.saving = d.job.id; render(); window.App.watchJobs();
+      while (E.saving === id) {  // watch it ourselves too: a quick save can finish between two polls of the jobs list
+        await new Promise((r) => setTimeout(r, 1500));
+        const j = (await api("/api/jobs").catch(() => ({ jobs: [] }))).jobs.find((x) => x.id === id);
+        if (!j) { E.saving = null; if (S.view === "editor") render(); } else if (!["running", "queued"].includes(j.status)) onJobDone(j, true);
+      }
     } catch (e) { fail(e); }
   }
 
-  function onJobDone(j) {
+  function onJobDone(j, own) {
     if (j.id !== E.saving) return;
     E.saving = null;
     if (j.status === "done" && j.outputs[0]) {
       toast("Saved: " + j.outputs[0].split(/[\\/]/).pop());
       api("/api/open", { path: j.outputs[0] }).catch(() => {});
-    }
+    } else if (own) toast("Couldn't save: " + (j.errors[0] || j.message), true, 6500);
     if (S.view === "editor") render();
   }
 

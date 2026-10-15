@@ -1,5 +1,5 @@
 @echo off
-title Everything Converter
+title Dr. Doc
 cd /d "%~dp0"
 
 if not exist ".venv\Scripts\python.exe" (

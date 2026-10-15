@@ -1,4 +1,4 @@
-"""Everything Converter — local, offline file conversion & toolbox.
+"""Dr. Doc — local, offline file conversion, editing & toolbox.
 Run:  python app.py   (or double-click Start.bat)"""
 import io
 import os
@@ -20,6 +20,15 @@ WEB = Path(__file__).parent / "web"
 app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = None  # no upload limit — your disk is the limit
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  # always serve the latest UI files
+
+
+# Feature modules ship their own routes as blueprints (video editor, document editor, …).
+for _mod in ("core.api_video", "core.api_office", "core.api_organize"):
+    try:
+        app.register_blueprint(__import__(_mod, fromlist=["bp"]).bp)
+    except ModuleNotFoundError as _e:
+        if _e.name != _mod:
+            raise
 
 
 # ---------------------------------------------------------------- safety: local use only
@@ -118,14 +127,21 @@ def api_upload():
 def api_thumb():
     p = request.args["path"]
     ext = registry.norm(ext_of(p))
+    if not os.path.isfile(p):
+        abort(404)
     if ext == "pdf":
-        return send_file(io.BytesIO(pdf_editor.thumb(p, 0)), mimetype="image/png")
-    from PIL import Image, ImageOps
-    from core.conv_image import RASTER_IN
+        try:
+            return send_file(io.BytesIO(pdf_editor.thumb(p, 0)), mimetype="image/png")
+        except Exception:
+            abort(415)
+    from core.conv_image import RASTER_IN, _open
     if ext not in RASTER_IN and ext != "jpg":
         abort(404)
-    im = ImageOps.exif_transpose(Image.open(p))
-    im.thumbnail((160, 160))
+    try:
+        im = _open(p)
+        im.thumbnail((160, 160))
+    except Exception:
+        abort(415)
     buf = io.BytesIO()
     im.convert("RGBA").save(buf, "PNG")
     buf.seek(0)
@@ -136,8 +152,23 @@ def api_thumb():
 def api_open():
     path = request.json["path"]
     if not os.path.exists(path):
-        Path(path).mkdir(parents=True, exist_ok=True)  # e.g. output folder not created yet
+        if Path(path).suffix:
+            abort(404, "File not found. It may have been moved or deleted.")
+        try:
+            Path(path).mkdir(parents=True, exist_ok=True)  # e.g. output folder not created yet
+        except OSError:
+            abort(404, f"Can't open {path}: the folder or drive isn't available.")
     open_in_explorer(path, reveal=request.json.get("reveal", True))
+    return ok()
+
+
+@app.post("/api/open-url")
+def api_open_url():
+    """Open a web link in the user's browser (inside the app window it would replace the app)."""
+    url = request.json.get("url", "")
+    if not url.startswith("https://"):
+        abort(400, "Only https links can be opened")
+    webbrowser.open(url)
     return ok()
 
 
@@ -158,12 +189,15 @@ def api_tool():
 
 @app.get("/api/jobs")
 def api_jobs():
-    return ok(jobs=[j.to_dict() for j in sorted(jobs.JOBS.values(), key=lambda j: -j.created)])
+    return ok(jobs=[j.to_dict() for j in sorted(list(jobs.JOBS.values()), key=lambda j: -j.created)])
 
 
 @app.post("/api/jobs/<jid>/cancel")
 def api_cancel(jid):
-    jobs.JOBS[jid].cancel()
+    job = jobs.JOBS.get(jid)
+    if job is None:
+        abort(404, "That job no longer exists.")
+    job.cancel()
     return ok()
 
 
@@ -280,7 +314,7 @@ def open_window(url):
 if __name__ == "__main__":
     port = free_port()
     url = f"http://127.0.0.1:{port}"
-    print(f"\n  Everything Converter running at {url}\n  Output folder: {DEFAULT_OUTPUT}\n  Close this window to quit.\n")
+    print(f"\n  Dr. Doc running at {url}\n  Output folder: {DEFAULT_OUTPUT}\n  Close this window to quit.\n")
     if "--no-browser" not in sys.argv:
         threading.Timer(1.0, open_window, args=[url]).start()
     from waitress import serve

@@ -1,0 +1,9 @@
+Dr. Doc is a desktop (Win32) application packaged with the Desktop Bridge. It needs runFullTrust because:
+
+1. It converts, compresses and edits files that the user explicitly picks or opens anywhere on their PC (Documents, Downloads, external and network drives), and writes results to a user-chosen output folder. These are often very large files (multi-GB videos) that are processed in place rather than copied.
+2. It runs bundled helper programs (ffmpeg/ffprobe) as child processes to convert and compress audio and video.
+3. It optionally automates Microsoft Word, Excel and PowerPoint through COM, when they are installed, for high-fidelity Office-to-PDF conversion.
+4. Its "Clean up" tool lets the user find duplicate or large files in folders they choose, clear temporary folders, and move selected files to the Recycle Bin.
+5. Its user interface runs on a local web server bound only to 127.0.0.1 (never exposed to the network) and is shown in a WebView2 window.
+
+The app works fully offline. It does not collect, transmit or share any user data, contains no telemetry or ads, and makes no network connections apart from the local loopback connection between its own window and its own engine.

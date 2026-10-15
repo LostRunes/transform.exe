@@ -5,9 +5,12 @@ PyMuPDF's drawing/redaction APIs use unrotated page coordinates, so we convert w
 derotation matrix on the way in and the rotation matrix on the way out."""
 import base64
 import os
+from functools import lru_cache
 from pathlib import Path
 
 import pymupdf as fitz
+
+from .conv_pdf import open_pdf
 
 FONT_DIR = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "Fonts"
 FONT_FILES = {  # (family, bold) -> windows TTF (full Unicode); base-14 fallback otherwise
@@ -17,12 +20,22 @@ FONT_FILES = {  # (family, bold) -> windows TTF (full Unicode); base-14 fallback
 }
 
 
-def _font(family, bold):
+@lru_cache(maxsize=None)
+def _glyphs(spec: str) -> fitz.Font:
+    return fitz.Font(fontfile=spec) if spec.endswith(".ttf") else fitz.Font(spec)
+
+
+def _font(page, family, bold, text=""):
     ttf, base = FONT_FILES.get((family, bool(bold)), FONT_FILES[("sans", False)])
     path = FONT_DIR / ttf
-    if path.exists():
-        return {"fontname": f"F_{family}_{int(bool(bold))}", "fontfile": str(path)}
-    return {"fontname": base}
+    f = {"fontname": f"F_{family}_{int(bool(bold))}", "fontfile": str(path)} if path.exists() else {"fontname": base}
+    font = _glyphs(str(path) if path.exists() else base)
+    if any(not font.has_glyph(ord(ch)) for ch in text if not ch.isspace()):
+        # e.g. Japanese, Chinese, ✓: Arial/Times have no glyphs for them and they'd come out blank.
+        # MuPDF's built-in fallback font covers them (and Latin), and is subset on save.
+        page.insert_font(fontname="F_fallback", fontbuffer=_glyphs("cjk").buffer)
+        return {"fontname": "F_fallback"}
+    return f
 
 
 def _rgb(h):
@@ -33,20 +46,18 @@ def _rgb(h):
 
 
 def info(path: str):
-    with fitz.open(path) as doc:
-        if doc.needs_pass:
-            raise ValueError("This PDF is password-protected. Remove the password first (PDF tools → Remove password).")
+    with open_pdf(path) as doc:  # explains locked / empty / damaged files
         return {"pages": [{"w": p.rect.width, "h": p.rect.height} for p in doc], "count": doc.page_count}
 
 
 def render(path: str, page: int, zoom: float) -> bytes:
-    with fitz.open(path) as doc:
+    with open_pdf(path) as doc:
         pix = doc[page].get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False, annots=True)
         return pix.tobytes("png")
 
 
 def thumb(path: str, page: int) -> bytes:
-    with fitz.open(path) as doc:
+    with open_pdf(path) as doc:
         p = doc[page]
         z = 140 / max(p.rect.width, 1)
         return p.get_pixmap(matrix=fitz.Matrix(z, z), alpha=False).tobytes("png")
@@ -55,7 +66,7 @@ def thumb(path: str, page: int) -> bytes:
 def text_lines(path: str, page: int):
     """Editable text lines on a page, in display coordinates."""
     out = []
-    with fitz.open(path) as doc:
+    with open_pdf(path) as doc:
         p = doc[page]
         rot = p.rotation_matrix
         d = p.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)
@@ -97,12 +108,24 @@ def _rect_u(page, r):
 
 
 def apply_edits(src: str, out: str, edits: list[dict]):
-    doc = fitz.open(src)
+    with open_pdf(src) as doc:  # always closed, so a failed save never leaves the original locked
+        _apply(doc, edits)
+        try:
+            doc.subset_fonts()  # embedded TTFs shrink from ~1 MB each to just the glyphs used
+        except Exception:
+            pass
+        doc.save(out, garbage=3, deflate=True)
+    return [Path(out)]
+
+
+def _apply(doc, edits: list[dict]):
     by_page: dict[int, list] = {}
     for e in edits:
         by_page.setdefault(int(e["page"]), []).append(e)
 
     for pno, items in by_page.items():
+        if not 0 <= pno < doc.page_count:
+            raise ValueError(f"There are edits for page {pno + 1}, but this PDF has {doc.page_count} pages")
         page = doc[pno]
         rot = page.rotation
 
@@ -116,7 +139,7 @@ def apply_edits(src: str, out: str, edits: list[dict]):
                                   text=fitz.PDF_REDACT_TEXT_REMOVE)
         for e in items:
             if e["type"] == "replace" and e.get("text", "").strip():
-                f = _font(e.get("family", "sans"), e.get("bold"))
+                f = _font(page, e.get("family", "sans"), e.get("bold"), e["text"])
                 page.insert_text(fitz.Point(e["uorigin"]), e["text"], fontsize=float(e["size"]),
                                  color=_rgb(e.get("color", "#000000")), **f)  # same direction as the original line
 
@@ -128,7 +151,7 @@ def apply_edits(src: str, out: str, edits: list[dict]):
             width = float(e.get("width", 2))
             opacity = float(e.get("opacity", 1))
             if t == "text":
-                f = _font(e.get("family", "sans"), e.get("bold"))
+                f = _font(page, e.get("family", "sans"), e.get("bold"), e["text"])
                 size = float(e.get("size", 14))
                 lines = e["text"].split("\n")
                 for i, line in enumerate(lines):
@@ -165,7 +188,3 @@ def apply_edits(src: str, out: str, edits: list[dict]):
                 data = e["data"].split(",", 1)[1] if "," in e["data"] else e["data"]
                 page.insert_image(_rect_u(page, e["rect"]), stream=base64.b64decode(data), keep_proportion=False,
                                   rotate=-rot % 360 if rot else 0, overlay=True)
-
-    doc.save(out, garbage=3, deflate=True)
-    doc.close()
-    return [Path(out)]
