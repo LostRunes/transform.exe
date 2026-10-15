@@ -47,19 +47,11 @@ class _CleanupViewState extends State<CleanupView> {
   final Set<String> _checked = {};
   String _summary = '';
 
-  bool _allFiles = false;
-
   @override
   void initState() {
     super.initState();
     _folder = app.getString('cleanFolder') ?? '';
     _overview();
-    _checkAccess();
-  }
-
-  Future<void> _checkAccess() async {
-    final granted = await Fs.hasAllFilesAccess();
-    if (mounted) setState(() => _allFiles = granted);
   }
 
   @override
@@ -418,7 +410,7 @@ class _CleanupViewState extends State<CleanupView> {
             ),
           ),
           const SizedBox(height: 12),
-          if (!_allFiles) _accessNotice(s),
+          _accessNotice(s),
           const SizedBox(height: 10),
           // Quick picks, because the system folder picker will not hand over
           // Download or the storage root at all.
@@ -528,32 +520,15 @@ class _CleanupViewState extends State<CleanupView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Why does the picker say "choose another folder"?',
+          Text('What can be scanned?',
               style: TextStyle(fontWeight: FontWeight.w800, color: s.text)),
           const SizedBox(height: 4),
           Text(
-            'Android blocks apps from being granted Download or the root of '
-            'internal storage through the folder picker. To scan those, this '
-            'app needs "All files access". It is only used here, on this page, '
-            'and nothing is ever uploaded.',
+            'Android lets apps look through your photos and videos (DCIM, '
+            'Pictures, Movies…) and the folders you pick. It keeps other apps\' '
+            'private files hidden, so those are never scanned. Nothing is ever '
+            'uploaded, and anything you remove is deleted only after you confirm.',
             style: TextStyle(fontSize: 12, color: s.muted),
-          ),
-          const SizedBox(height: 10),
-          RetroButton(
-            label: 'Allow all files access',
-            size: BtnSize.sm,
-            onPressed: () async {
-              final granted = await Fs.requestAllFilesAccess();
-              if (!mounted) return;
-              setState(() => _allFiles = granted);
-              if (granted) {
-                await app.refreshDefaultOutDir();
-                toast('All files access granted');
-              } else {
-                toast('Not granted — the quick picks above still work '
-                    'for folders Android does share.', error: true);
-              }
-            },
           ),
         ],
       ),

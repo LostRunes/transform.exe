@@ -1,4 +1,4 @@
-"""Generate the app icon (.ico) and every MSIX / Microsoft Store logo from web/assets/mascot-light.png.
+"""Generate the app icon (.ico) and every MSIX / Microsoft Store logo from packaging/logo.png.
 
 Usage:  .venv\\Scripts\\python packaging\\make_assets.py [out_dir]     (default: packaging/assets)
 Writes  <out>/drdoc.ico  and  <out>/msix/*.png  using the standard MSIX qualifier naming
@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "web" / "assets" / "mascot-light.png"
+SRC = ROOT / "packaging" / "logo.png"  # the Dr. Doc product logo (transparent PNG)
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent / "assets"
 
 SCALES = (100, 125, 150, 200, 400)
@@ -30,11 +30,11 @@ TARGET_SIZES = (16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256)
 
 def load():
     im = Image.open(SRC).convert("RGBA")
-    full = im.crop(im.getchannel("A").getbbox())
-    # small sizes: the hooded head reads better than the whole body
-    w, h = full.size
-    head = full.crop((0, 0, w, int(h * 0.5)))
-    head = head.crop(head.getchannel("A").getbbox())
+    # crop to the visible artwork; the PNG has faint stray pixels out to its edges
+    solid = im.getchannel("A").point(lambda v: 255 if v > 40 else 0)
+    full = im.crop(solid.getbbox())
+    # small sizes (<= 48 px): a square around the face reads far better than the whole scene
+    head = im.crop((290, 130, 920, 760))
     return full, head
 
 

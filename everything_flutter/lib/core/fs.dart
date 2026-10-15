@@ -35,18 +35,18 @@ class Fs {
     }
 
     final candidates = <String>[
-      '/storage/emulated/0/Download/Everything Converter',
-      '/storage/emulated/0/Documents/Everything Converter',
+      '/storage/emulated/0/Download/Dr. Doc',
+      '/storage/emulated/0/Documents/Dr. Doc',
     ];
     try {
       final ext = await getExternalStorageDirectory();
       // Always writable, no permission needed, and visible to file managers
       // under Android/data/<package>/files.
-      if (ext != null) candidates.add(pp.join(ext.path, 'Everything Converter'));
+      if (ext != null) candidates.add(pp.join(ext.path, 'Dr. Doc'));
     } catch (_) {
       // Not available on this device; the app-private folder still works.
     }
-    candidates.add(pp.join(_docs.path, 'Everything Converter'));
+    candidates.add(pp.join(_docs.path, 'Dr. Doc'));
 
     for (final path in candidates) {
       if (await isWritable(path)) {
@@ -83,7 +83,7 @@ class Fs {
     outDir = _docs.path;
   }
 
-  /// Scratch space, wiped after each job like %LOCALAPPDATA%\EverythingConverter.
+  /// Scratch space, wiped after each job like %LOCALAPPDATA%\DrDoc.
   static Directory scratch() {
     final d = Directory(pp.join(
         _cache.path, 'scratch', DateTime.now().microsecondsSinceEpoch.toString()));
@@ -142,7 +142,8 @@ class Fs {
   /// Android 13+ splits media permission; older needs plain storage.
   static Future<bool> ensureStorage() async {
     if (!Platform.isAndroid) return true;
-    if (await Permission.photos.request().isGranted) return true;
+    final media = await [Permission.photos, Permission.videos].request();
+    if (media.values.any((s) => s.isGranted || s.isLimited)) return true;
     if (await Permission.storage.request().isGranted) return true;
     return false;
   }
@@ -163,23 +164,6 @@ class Fs {
       for (final r in roots)
         if (Directory(r).existsSync()) r,
     ];
-  }
-
-  /// "All files access" (MANAGE_EXTERNAL_STORAGE).
-  ///
-  /// Android's folder picker refuses to hand out Download or the root of
-  /// internal storage ("To protect your privacy, choose another folder"), so
-  /// scanning those for duplicates is only possible with this permission.
-  static Future<bool> hasAllFilesAccess() async {
-    if (!Platform.isAndroid) return true;
-    return Permission.manageExternalStorage.isGranted;
-  }
-
-  /// Sends the user to the system settings screen for the permission.
-  static Future<bool> requestAllFilesAccess() async {
-    if (!Platform.isAndroid) return true;
-    final status = await Permission.manageExternalStorage.request();
-    return status.isGranted;
   }
 
   static Future<bool> ensureCamera() async =>

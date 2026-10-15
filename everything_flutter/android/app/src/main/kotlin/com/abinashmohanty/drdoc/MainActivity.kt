@@ -1,4 +1,4 @@
-package com.everythingconverter.everything_converter
+package com.abinashmohanty.drdoc
 
 import androidx.media3.common.util.UnstableApi
 import io.flutter.embedding.android.FlutterActivity

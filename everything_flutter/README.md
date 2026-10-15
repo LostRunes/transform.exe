@@ -1,6 +1,6 @@
-# Everything Converter — Flutter (Android)
+# Dr. Doc — Flutter (Android)
 
-A port of the desktop Everything Converter to Flutter for Android, with the same
+A port of the desktop Dr. Doc (formerly Everything Converter) to Flutter for Android, with the same
 pastel retro-desktop UI, plus a new **Scan → PDF** feature that builds a PDF from
 photos you take with the camera or pick from the gallery.
 
@@ -13,8 +13,16 @@ dependency cannot quietly add it back.
 ```
 flutter pub get
 flutter run                      # debug, on a connected device
-flutter build apk --release      # release APK
+flutter build apk --release      # release APK (for sideloading)
+flutter build appbundle --release # Google Play bundle, signed with the upload key
 ```
+
+Package name: `com.abinashmohanty.drdoc`. Release builds are signed with the Play
+**upload key** in `android/upload-keystore.jks` + `android/key.properties` (both git-ignored;
+without them the release build falls back to the debug key and prints a warning).
+Publishing on Google Play, including the upload key, every Play Console form and the
+listing text, is covered in [`store/README.md`](store/README.md).
+Icons and Play graphics come from `../packaging/logo.png`: `python tool/make_android_assets.py`.
 
 Requires the Flutter SDK (Dart 3.10+) and the Android SDK. `minSdk` is 24.
 
@@ -25,7 +33,10 @@ does the same automatically.
 
 ### Permissions
 
-The release APK ships with camera and media-read permissions and nothing else.
+The release build ships with camera and photo/video-read permissions and nothing else
+(plus two harmless ones from Google's media library: network-state and wake-lock).
+`MANAGE_EXTERNAL_STORAGE` ("All files access") is removed with `tools:node="remove"`
+because Google Play only allows it for file managers, backup and antivirus apps.
 `INTERNET` is stripped in `android/app/src/main/AndroidManifest.xml` with
 `tools:node="remove"`, so no dependency can pull it in behind your back; debug and
 profile builds re-add it from their own manifests so hot reload still works. The
@@ -134,10 +145,8 @@ landscape). On a phone:
   refuses to grant access to `Download` or the root of internal storage — it
   answers "To protect your privacy, choose another folder". That is an OS rule,
   not something the app can work around. So the Clean up page offers quick picks
-  for the folders Android *does* share (DCIM, Pictures, Documents…) and an
-  opt-in **All files access** button for the rest. The app never asks for that
-  permission on launch, and granting it also makes shared `Download` usable as
-  the output folder.
+  for the folders Android *does* share (DCIM, Pictures, Documents…). Other apps'
+  private files are never scanned; the Play build doesn't ask for "All files access".
 
 ## Layout
 
