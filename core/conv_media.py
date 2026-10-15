@@ -4,7 +4,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from .util import FFMPEG, FFPROBE
+from .util import FFMPEG, FFPROBE, h264_args, has_x264, human_size as human
 
 VIDEO = {"mp4", "mkv", "mov", "avi", "webm", "flv", "wmv", "m4v", "mpeg", "mpg", "3gp", "ts", "mts", "m2ts", "ogv", "vob"}
 AUDIO = {"mp3", "wav", "aac", "flac", "ogg", "m4a", "opus", "wma", "aiff", "aif", "amr", "ac3", "mka"}
@@ -60,8 +60,8 @@ def has_audio(path: Path) -> bool:
     return any(s.get("codec_type") == "audio" for s in probe(path).get("streams", []))
 
 
-def run_ffmpeg(args: list[str], ctx, duration: float = 0.0, label: str = ""):
-    """Run ffmpeg, stream progress into ctx, honour cancellation."""
+def run_ffmpeg(args: list[str], ctx, duration: float = 0.0, label: str = "", span=(0.0, 1.0)):
+    """Run ffmpeg, stream progress into ctx, honour cancellation. span maps this run into part of the bar."""
     if not FFMPEG:
         raise RuntimeError("ffmpeg not found. Install it (winget install Gyan.FFmpeg) or drop ffmpeg.exe into ./bin")
     cmd = [FFMPEG, "-hide_banner", "-y", "-nostats", "-progress", "pipe:1", *args]
@@ -86,7 +86,8 @@ def run_ffmpeg(args: list[str], ctx, duration: float = 0.0, label: str = ""):
             try:
                 t = int(line.split("=")[1]) / 1_000_000
                 if duration > 0:
-                    ctx.sub_progress(min(t / duration, 0.999), f"{label} {t:.0f}s / {duration:.0f}s")
+                    frac = span[0] + (span[1] - span[0]) * min(t / duration, 0.999)
+                    ctx.sub_progress(frac, f"{label} {t:.0f}s / {duration:.0f}s")
             except ValueError:
                 pass
     proc.wait()
@@ -94,7 +95,8 @@ def run_ffmpeg(args: list[str], ctx, duration: float = 0.0, label: str = ""):
     if ctx.cancelled:
         raise Cancelled()
     if proc.returncode != 0:
-        raise RuntimeError("ffmpeg failed:\n" + "".join(err_tail[-12:]))
+        lines = [ln.strip() for ln in err_tail if ln.strip() and not ln.startswith((" ", "\t"))]
+        raise RuntimeError("ffmpeg failed: " + " / ".join(lines[-3:] or ["unknown error"]))
 
 
 def _quality_crf(params, default=23):
@@ -119,7 +121,7 @@ def codec_args(fmt: str, params: dict, src_has_audio=True) -> list[str]:
             "ac3": ["-c:a", "ac3", "-b:a", "384k"],
         }[fmt]]
     a = ["-c:a", "aac", "-b:a", "160k"]
-    h264 = ["-c:v", "libx264", "-preset", preset, "-crf", crf, "-pix_fmt", "yuv420p"]
+    h264 = [*h264_args(crf, preset), "-pix_fmt", "yuv420p"]  # x264, or Windows' encoder in LGPL builds
     v = {
         "mp4": h264 + a + ["-movflags", "+faststart"],
         "m4v": h264 + a + ["-movflags", "+faststart"],
@@ -127,34 +129,39 @@ def codec_args(fmt: str, params: dict, src_has_audio=True) -> list[str]:
         "mkv": h264 + a,
         "flv": h264 + a,
         "ts": h264 + a,
-        "3gp": ["-c:v", "libx264", "-profile:v", "baseline", "-crf", crf, "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k"],
-        "webm": ["-c:v", "libvpx-vp9", "-crf", str(int(crf) + 8), "-b:v", "0", "-deadline", "good", "-cpu-used", "4",
+        "3gp": [*h264_args(crf, preset), *(["-profile:v", "baseline"] if has_x264() else []), "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "96k"],
+        "webm": ["-c:v", "libvpx-vp9", "-pix_fmt", "yuv420p", "-crf", str(int(crf) + 8), "-b:v", "0", "-deadline", "good", "-cpu-used", "4",
                  "-row-mt", "1", "-c:a", "libopus", "-b:a", "128k"],
         "avi": ["-c:v", "mpeg4", "-q:v", "3", "-c:a", "libmp3lame", "-b:a", "192k"],
         "wmv": ["-c:v", "wmv2", "-q:v", "3", "-c:a", "wmav2", "-b:a", "192k"],
         "mpeg": ["-c:v", "mpeg2video", "-q:v", "3", "-c:a", "mp2", "-b:a", "192k"],
     }[fmt]
     if params.get("codec") == "h265" and fmt in ("mp4", "mkv", "mov", "m4v"):
-        v = ["-c:v", "libx265", "-preset", preset, "-crf", str(int(crf) + 5), "-pix_fmt", "yuv420p", "-tag:v", "hvc1"] + a
+        v = [*h264_args(int(crf) + 5, preset, hevc=True), "-pix_fmt", "yuv420p"] + a
     return v
 
 
 def convert_media(src: Path, out: Path, params: dict, ctx):
     fmt = out.suffix.lower().lstrip(".")
+    info = probe(src)
+    streams = {s.get("codec_type") for s in info.get("streams", [])}
+    if FFMPEG and not streams:  # (without ffmpeg, run_ffmpeg explains how to install it)
+        raise ValueError("This file is damaged or isn't a video/audio file ffmpeg can read")
+    if streams and fmt in AUDIO_OUT and "audio" not in streams:
+        raise ValueError(f"{src.name} has no sound track, so there's no audio to save")
     dur = duration_of(src)
     if fmt == "gif":
-        fps = int(params.get("fps", 12))
-        width = int(params.get("width", 480))
+        fps = float(params.get("fps") or 12)
+        width = int(params.get("width") or 480)
         vf = (f"fps={fps},scale={width}:-1:flags=lanczos,split[s0][s1];"
               f"[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5")
         run_ffmpeg(["-i", str(src), "-vf", vf, "-loop", "0", str(out)], ctx, dur, "GIF")
         return [out]
-    src_ext = src.suffix.lower().lstrip(".")
     extra_in = []
     vf = []
-    if src_ext == "gif" and fmt in VIDEO_OUT:
-        extra_in = []
-        vf = ["scale=trunc(iw/2)*2:trunc(ih/2)*2"]  # h264 needs even dimensions
+    if fmt in VIDEO_OUT:
+        vf = ["scale=trunc(iw/2)*2:trunc(ih/2)*2"]  # H.264 & co. need even dimensions (GIFs, odd-sized clips)
     if params.get("fast_copy") and fmt in ("mp4", "mkv", "mov", "m4v", "ts"):
         args = ["-i", str(src), "-map", "0", "-c", "copy", str(out)]
     else:
@@ -168,46 +175,198 @@ def convert_media(src: Path, out: Path, params: dict, ctx):
 
 # ---------------- tools ----------------
 
+# Short side of the picture, best first. Target-size encodes step down this ladder until
+# each pixel gets enough bits to look like video rather than mush.
+SHORT_SIDES = [2160, 1440, 1080, 720, 540, 480, 360, 240]
+
+
+def _video_stream(info: dict):
+    return next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), None)
+
+
+def _fps(stream) -> float:
+    try:
+        a, b = str(stream.get("avg_frame_rate") or stream.get("r_frame_rate")).split("/")
+        f = float(a) / float(b)
+        return f if 1 <= f <= 240 else 30.0
+    except Exception:
+        return 30.0
+
+
+def _auto_short_side(stream, video_k: int, h265: bool):
+    """Largest short side (no upscaling) where the bitrate still gives a sane bits-per-pixel."""
+    if not stream or not stream.get("width"):
+        return None
+    w, h = stream["width"], stream["height"]
+    short, long_ = min(w, h), max(w, h)
+    need = 0.035 if h265 else 0.05
+    fps = _fps(stream)
+    for side in SHORT_SIDES:
+        if side > short:
+            continue
+        pixels = side * side * long_ / short
+        if video_k * 1000 / (fps * pixels) >= need:
+            return side if side < short else None
+    return SHORT_SIDES[-1] if short > SHORT_SIDES[-1] else None
+
+
 def tool_compress_video(src: Path, out_dir: Path, params: dict, ctx, unique):
+    from .shrink import already_fits, budget, report
+    size = src.stat().st_size
+    limit = budget(size, params)
+    done = already_fits(src, out_dir, limit, ctx, unique)
+    if done:
+        return done
     dur = duration_of(src)
     out = unique(out_dir, src.stem + "_compressed", "mp4")
-    vf = []
+    h265 = params.get("codec") == "h265"
+    preset = params.get("preset", "medium")
     height = int(params.get("max_height") or 0)
     if height:
-        vf.append(f"scale=-2:'min({height},ih)'")
-    codec = "libx265" if params.get("codec") == "h265" else "libx264"
-    args = ["-i", str(src), "-c:v", codec, "-preset", params.get("preset", "medium"), "-pix_fmt", "yuv420p"]
-    target_mb = float(params.get("target_mb") or 0)
-    if target_mb and dur:
-        audio_k = 96
-        video_k = max(100, int(target_mb * 8192 / dur - audio_k))
-        args += ["-b:v", f"{video_k}k", "-maxrate", f"{int(video_k * 1.5)}k", "-bufsize", f"{video_k * 2}k"]
+        vf = [f"scale=-2:'trunc(min({height},ih)/2)*2'"]
     else:
-        crf = int(params.get("crf", 28)) + (4 if codec == "libx265" else 0)
-        args += ["-crf", str(crf)]
-    if codec == "libx265":
-        args += ["-tag:v", "hvc1"]
-    if vf:
-        args += ["-vf", ",".join(vf)]
-    args += ["-c:a", "aac", "-b:a", "96k" if target_mb else "128k", "-movflags", "+faststart", str(out)]
-    run_ffmpeg(args, ctx, dur, "Compressing")
+        vf = ["scale=trunc(iw/2)*2:trunc(ih/2)*2"]  # x264 with yuv420p refuses odd sizes
+
+    if limit is None:
+        crf = int(params.get("crf", 28)) + (4 if h265 else 0)
+        args = ["-i", str(src), *h264_args(crf, preset, hevc=h265), "-pix_fmt", "yuv420p"]
+        if vf:
+            args += ["-vf", ",".join(vf)]
+        args += ["-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out)]
+        run_ffmpeg(args, ctx, dur, "Compressing")
+        report(ctx, src.name, size, out.stat().st_size)
+        return [out]
+
+    if not dur:
+        raise ValueError("Couldn't read the video's length, so a target size can't be worked out")
+    info = probe(src)
+    vs = _video_stream(info)
+    with_audio = any(s.get("codec_type") == "audio" for s in info.get("streams", []))
+    total_k = limit * 8 / 1000 / dur * 0.96  # leave ~4% for the MP4 container
+    audio_k = int(min(128, max(24, total_k * 0.12))) if with_audio else 0
+    video_k = int(total_k - audio_k)
+    if video_k < 30:
+        raise ValueError(f"{human(limit)} is too small for a {dur:.0f}s video: the picture would get under "
+                         f"30 kbps. Try a bigger target, or trim the video first.")
+    if not height and params.get("auto_res", True):
+        side = _auto_short_side(vs, video_k, h265)
+        if side:
+            vf.append(f"scale='if(gt(iw,ih),-2,{side})':'if(gt(iw,ih),{side},-2)'")
+            ctx.note(f"{src.name}: lowered to {side}p so {video_k} kbps still looks clean")
+    audio = (["-c:a", "aac", "-b:a", f"{audio_k}k"] + (["-ac", "1"] if audio_k < 48 else [])) if with_audio else ["-an"]
+    log = str(out_dir / f"{src.stem}_x264pass")
+
+    for attempt in range(3):
+        base = ["-i", str(src), *h264_args(preset=preset, hevc=h265, bitrate_k=video_k), "-pix_fmt", "yuv420p"]
+        if has_x264():
+            base += ["-maxrate", f"{int(video_k * 1.5)}k", "-bufsize", f"{video_k * 2}k"]
+        if vf:
+            base += ["-vf", ",".join(vf)]
+        # x265's two-pass stats path can't hold a Windows drive colon, and Windows' own encoder has no
+        # two-pass mode: both get one bitrate pass plus the size check below.
+        if h265 or not has_x264():
+            run_ffmpeg(base + [*audio, "-movflags", "+faststart", str(out)], ctx, dur,
+                       f"Encoding (try {attempt + 1})")
+        else:
+            run_ffmpeg(base + ["-pass", "1", "-passlogfile", log, "-an", "-f", "null", os.devnull], ctx, dur,
+                       "Pass 1 of 2", span=(0, 0.45))
+            run_ffmpeg(base + ["-pass", "2", "-passlogfile", log, *audio, "-movflags", "+faststart", str(out)], ctx, dur,
+                       "Pass 2 of 2", span=(0.45, 1))
+        got = out.stat().st_size
+        if got <= limit or video_k <= 30:
+            break
+        video_k = max(30, int(video_k * (limit / got) * 0.97))  # overshot: aim lower and go again
+    for f in out_dir.glob(f"{src.stem}_x264pass*"):
+        f.unlink(missing_ok=True)
+    report(ctx, src.name, size, out.stat().st_size, limit)
+    return [out]
+
+
+# Formats that can take a bitrate. Anything else (WAV, FLAC, AIFF…) is lossless or odd and
+# becomes MP3, since a lossless file can't be squeezed to an arbitrary size.
+AUDIO_KEEP = {"mp3": "mp3", "m4a": "m4a", "aac": "m4a", "opus": "opus", "ogg": "ogg"}
+
+
+OPUS_RATES = [48000, 24000, 16000, 12000, 8000]
+
+
+def _audio_args(fmt: str, k: int, channels="auto", rate=0) -> list[str]:
+    """Encoder flags for roughly k kbps. In "auto", drops to mono / a lower sample rate when bits get tight."""
+    args = ["-vn", "-map_metadata", "0"]
+    if channels == "mono" or (channels == "auto" and k < 40):
+        args += ["-ac", "1"]
+    elif channels == "stereo":
+        args += ["-ac", "2"]
+    if fmt == "mp3":
+        k = max(8, min(320, k))
+        if not rate and k < 32:  # MPEG-1 layer 3 bottoms out at 32 kbps; the lower sample rates go further
+            rate = 22050 if k >= 12 else 11025
+        args += ["-ar", str(rate)] if rate else []
+        return args + ["-c:a", "libmp3lame", "-abr", "1", "-b:a", f"{k}k"]
+    if fmt == "m4a":
+        k = max(8, min(320, k))
+        if not rate and k < 24:
+            rate = 22050
+        args += ["-ar", str(rate)] if rate else []
+        return args + ["-c:a", "aac", "-b:a", f"{k}k"]
+    k = max(6, min(256, k))  # opus / ogg (Opus in an Ogg container): only a few rates are legal
+    if rate:
+        args += ["-ar", str(min(OPUS_RATES, key=lambda r: abs(r - rate)))]
+    return args + ["-c:a", "libopus", "-b:a", f"{k}k"]
+
+
+def tool_compress_audio(src: Path, out_dir: Path, params: dict, ctx, unique):
+    from .shrink import already_fits, budget, report
+    size = src.stat().st_size
+    limit = budget(size, params)
+    done = already_fits(src, out_dir, limit, ctx, unique)
+    if done:
+        return done
+    ext = src.suffix.lower().lstrip(".")
+    want = params.get("format", "keep")
+    fmt = AUDIO_KEEP.get(ext, "mp3") if want == "keep" else want
+    if want == "keep" and fmt != ext and not (ext == "aac" and fmt == "m4a"):
+        ctx.note(f"{src.name}: .{ext} can't be squeezed to a size, so it's saved as .{fmt}")
+    dur = duration_of(src)
+    out = unique(out_dir, src.stem + "_compressed", fmt)
+    if limit is None:
+        k = int(str(params.get("bitrate", "96")).rstrip("k"))
+    else:
+        if not dur:
+            raise ValueError("Couldn't read the audio's length, so a target size can't be worked out")
+        k = int(limit * 8 / 1000 / dur * 0.97)
+        if k < 6:
+            raise ValueError(f"{human(limit)} is too small for {dur:.0f}s of audio (it would need under 6 kbps)")
+    for attempt in range(3):
+        args = _audio_args(fmt, k, params.get("channels", "auto"), int(params.get("sample_rate") or 0))
+        run_ffmpeg(["-i", str(src), *args, str(out)], ctx, dur, f"Encoding (try {attempt + 1})")
+        got = out.stat().st_size
+        if limit is None or got <= limit or k <= 6:
+            break
+        k = max(6, int(k * (limit / got) * 0.95))
+    report(ctx, src.name, size, out.stat().st_size, limit)
     return [out]
 
 
 def tool_trim(src: Path, out_dir: Path, params: dict, ctx, unique):
-    start = params.get("start") or "0"
-    end = params.get("end") or ""
+    start = str(params.get("start") or "0").strip()
+    end = str(params.get("end") or "").strip()
+    a, b, dur = _secs(start), _secs(end) if end else None, duration_of(src)
+    if dur and a >= dur:
+        raise ValueError(f"Start ({start}) is past the end of the clip ({dur:.1f}s long)")
+    if b is not None and b <= a:
+        raise ValueError(f"End ({end}) must be after start ({start})")
     ext = src.suffix.lower().lstrip(".")
     out = unique(out_dir, src.stem + "_trimmed", ext)
-    args = ["-ss", start, "-i", str(src)]
+    args = ["-ss", str(a), "-i", str(src)]
     if end:
-        args += ["-to", str(_secs(end) - _secs(start))]
+        args += ["-to", str(b - a)]
     if params.get("precise", True) and ext in ("mp4", "mkv", "mov", "m4v", "webm", "avi"):
         args += codec_args(ext if ext != "m4v" else "mp4", params)
     else:
         args += ["-c", "copy"]
     args.append(str(out))
-    total = (_secs(end) if end else duration_of(src)) - _secs(start)
+    total = (min(b, dur) if b is not None and dur else b if b is not None else dur) - a
     run_ffmpeg(args, ctx, total, "Trimming")
     return [out]
 
@@ -243,7 +402,13 @@ def tool_mute(src: Path, out_dir: Path, params: dict, ctx, unique):
 
 
 def tool_frames(src: Path, out_dir: Path, params: dict, ctx, unique):
-    fps = params.get("fps", "1")
+    fps = str(params.get("fps") or "1").strip()
+    try:
+        ok = float(fps) > 0
+    except ValueError:
+        ok = False
+    if not ok:
+        raise ValueError(f"Frames per second must be a number above 0 (e.g. 1, 0.5 or 24), not “{fps}”")
     fmt = params.get("format", "jpg")
     folder = unique(out_dir, src.stem + "_frames", "d").with_suffix("")
     folder.mkdir(parents=True, exist_ok=True)
@@ -257,6 +422,13 @@ def tool_concat(srcs: list[Path], out: Path, params: dict, ctx):
     info = probe(srcs[0])
     vs = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), None)
     is_audio = vs is None
+    if not is_audio:
+        no_video = [s.name for s in srcs[1:] if not _video_stream(probe(s))]
+        if no_video:
+            raise ValueError(f"Can't join audio-only files onto a video ({', '.join(no_video)}). "
+                             "Put an audio file first to join everything as audio.")
+        if not vs.get("width"):
+            raise ValueError(f"Couldn't read the picture size of {srcs[0].name}")
     total = sum(duration_of(s) for s in srcs)
     args = []
     for s in srcs:
@@ -265,7 +437,7 @@ def tool_concat(srcs: list[Path], out: Path, params: dict, ctx):
         filt = "".join(f"[{i}:a]" for i in range(len(srcs))) + f"concat=n={len(srcs)}:v=0:a=1[a]"
         args += ["-filter_complex", filt, "-map", "[a]", *codec_args(out.suffix.lstrip(".").lower(), params), str(out)]
     else:
-        w, h = vs["width"], vs["height"]
+        w, h = vs["width"] // 2 * 2, vs["height"] // 2 * 2  # H.264 needs even sizes
         parts, labels = [], ""
         for i, s in enumerate(srcs):
             parts.append(f"[{i}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
@@ -294,6 +466,8 @@ def tool_audio_tools(src: Path, out_dir: Path, params: dict, ctx, unique):
     fin = float(params.get("fade_in") or 0)
     if fin:
         af.append(f"afade=t=in:d={fin}")
+    if not has_audio(src):
+        raise ValueError(f"{src.name} has no sound track")
     out = unique(out_dir, src.stem + "_audio", ext if ext in AUDIO_OUT else "mp3")
     args = ["-i", str(src)]
     if af:
@@ -307,7 +481,10 @@ def _secs(t: str) -> float:
     t = str(t).strip()
     if not t:
         return 0.0
-    parts = [float(p) for p in t.split(":")]
+    try:
+        parts = [float(p) for p in t.split(":")]
+    except ValueError:
+        raise ValueError(f"Couldn't read the time “{t}”. Use seconds (e.g. 90 or 12.5) or h:mm:ss") from None
     s = 0.0
     for p in parts:
         s = s * 60 + p

@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Everything Converter</title>
+<title>Dr. Doc</title>
 <link rel="icon" href="/web/assets/mascot-light-sm.png">
 <link rel="stylesheet" href="/web/style.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 
 <!-- decorative sky: clouds, sparkles, stars (night) -->
 <div class="sky" aria-hidden="true">
@@ -21,20 +22,24 @@
 </div>
 
 <div class="app">
-  <aside class="sidebar win">
-    <div class="titlebar"><span>my_computer</span></div>
+  <aside class="sidebar win" aria-label="Dr. Doc">
+    <div class="titlebar"><span>dr_doc</span></div>
     <div class="buddy">
-      <div class="bubble" id="buddy-say">hi! drop anything on me ✦</div>
-      <img class="mascot float" alt="" id="buddy">
+      <div class="bubble" id="buddy-say" aria-live="polite">hi! drop anything on me ✦</div>
+      <img class="mascot float" alt="Dr. Doc mascot. Click me!" id="buddy" tabindex="0" role="button">
     </div>
-    <nav id="nav">
-      <a data-view="convert" class="active"><i class="ico i1">⇄</i>Convert</a>
-      <a data-view="tools:PDF"><i class="ico i2">▤</i>PDF tools</a>
-      <a data-view="editor"><i class="ico i3">✎</i>PDF editor</a>
-      <a data-view="tools:Image"><i class="ico i4">▧</i>Image tools</a>
-      <a data-view="tools:Video & Audio"><i class="ico i5">▶</i>Video &amp; audio</a>
-      <a data-view="tools:Data"><i class="ico i6">▦</i>Spreadsheets</a>
-      <a data-view="cleanup"><i class="ico i7">✦</i>Clean up</a>
+    <nav id="nav" aria-label="Workspaces">
+      <a href="#" data-view="convert" class="active"><i class="ico i1">⇄</i>Convert</a>
+      <a href="#" data-view="tools:Compress"><i class="ico i8">⇲</i>Compress</a>
+      <a href="#" data-view="tools:PDF"><i class="ico i2">▤</i>PDF tools</a>
+      <a href="#" data-view="editor"><i class="ico i3">✎</i>PDF editor</a>
+      <a href="#" data-view="office"><i class="ico i6">▤</i>Docs &amp; sheets</a>
+      <a href="#" data-view="tools:Image"><i class="ico i4">▧</i>Image tools</a>
+      <a href="#" data-view="video"><i class="ico i5">🎬</i>Video editor</a>
+      <a href="#" data-view="tools:Video & Audio"><i class="ico i5">▶</i>Video &amp; audio</a>
+      <a href="#" data-view="tools:Data"><i class="ico i6">▦</i>Spreadsheets</a>
+      <a href="#" data-view="cleanup"><i class="ico i7">✦</i>Clean up</a>
+      <a href="#" data-view="help"><i class="ico i1">?</i>Help &amp; manual</a>
     </nav>
     <div class="side-foot">
       <div class="caps" id="caps"></div>
@@ -42,13 +47,15 @@
     </div>
   </aside>
 
-  <main>
+  <main id="main" tabindex="-1">
     <header class="topbar win">
       <div class="titlebar"><span id="view-title">convert.exe</span></div>
       <div class="addr">
         <span class="addr-label">save to</span>
-        <button class="addr-field" id="out-pick" title="Change output folder"><span class="addr-ico">📁</span><span id="out-dir">…</span></button>
-        <button class="icon-btn" id="out-open" title="Open output folder">↗</button>
+        <button class="addr-field" id="out-pick" title="Change output folder" aria-label="Output folder. Click to change"><span class="addr-ico">📁</span><span id="out-dir">…</span></button>
+        <button class="icon-btn" id="out-open" title="Open output folder" aria-label="Open output folder">↗</button>
+        <button class="icon-btn" id="search-btn" title="Find a tool or help topic (Ctrl+K)" aria-label="Find a tool or help topic">🔍</button>
+        <button class="icon-btn" id="help-btn" title="Help & manual (F1)" aria-label="Help and manual">?</button>
       </div>
     </header>
 
@@ -56,35 +63,43 @@
     <section class="view" id="view-tools" hidden></section>
     <section class="view" id="view-editor" hidden></section>
     <section class="view" id="view-cleanup" hidden></section>
+    <section class="view" id="view-office" hidden></section>
+    <section class="view" id="view-video" hidden></section>
+    <section class="view" id="view-help" hidden></section>
   </main>
 
-  <aside class="jobs win" id="jobs" hidden>
-    <div class="titlebar"><span>jobs.exe</span><button class="tb-x" id="jobs-close" title="Close">✕</button></div>
+  <aside class="jobs win" id="jobs" hidden aria-label="Jobs">
+    <div class="titlebar"><span>jobs.exe</span><button class="tb-x" id="jobs-close" title="Close" aria-label="Close jobs">✕</button></div>
     <div class="jobs-head"><button class="btn ghost sm" id="jobs-clear">Clear finished</button></div>
     <div id="jobs-list" class="jobs-list"></div>
   </aside>
 </div>
 
 <footer class="taskbar">
-  <button class="start" id="start"><span class="heart">♥</span>Start</button>
-  <div class="start-menu win" id="start-menu" hidden>
+  <button class="start" id="start" aria-haspopup="menu" aria-expanded="false" aria-controls="start-menu"><span class="heart">♥</span>Start</button>
+  <div class="start-menu win" id="start-menu" hidden role="menu" aria-label="Start menu">
     <div class="titlebar"><span>start</span></div>
     <div class="sm-body">
       <img class="mascot" alt="">
       <div class="sm-items" id="start-items"></div>
     </div>
   </div>
-  <button class="task" id="jobs-toggle"><span class="task-ico">⏳</span>jobs <span class="badge" id="jobs-count">0</span></button>
+  <button class="task" id="jobs-toggle" aria-controls="jobs" aria-label="Jobs"><span class="task-ico">⏳</span>jobs <span class="badge" id="jobs-count">0</span></button>
   <div class="spacer"></div>
-  <button class="task" id="theme" title="Day / night"><span id="theme-ico">☾</span><span id="theme-label">night</span></button>
-  <div class="clock" id="clock">11:11</div>
+  <button class="task" id="theme" title="Day / night" aria-label="Switch day or night theme"><span id="theme-ico">☾</span><span id="theme-label">night</span></button>
+  <div class="clock" id="clock" aria-hidden="true">11:11</div>
 </footer>
 
-<div class="drop-overlay" id="drop-overlay"><div class="win"><div class="titlebar"><span>incoming!</span></div><div class="drop-body"><img class="mascot float" alt="">drop it like it's hot ✦</div></div></div>
-<div class="toast-wrap" id="toasts"></div>
+<div class="drop-overlay" id="drop-overlay" aria-hidden="true"><div class="win"><div class="titlebar"><span>incoming!</span></div><div class="drop-body"><img class="mascot float" alt="">drop it like it's hot ✦</div></div></div>
+<div class="toast-wrap" id="toasts" role="status" aria-live="polite"></div>
 <div class="modal" id="modal" hidden></div>
 
 <script src="/web/app.js"></script>
+<script src="/web/organize.js"></script>
+<script src="/web/help.js"></script>
+<script src="/web/tour.js"></script>
 <script src="/web/editor.js"></script>
+<script src="/web/office.js" onerror="this.remove()"></script>
+<script src="/web/video.js" onerror="this.remove()"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 """The conversion graph (any format -> any format via chained steps) and the tool catalogue."""
 from collections import deque
 
-from . import conv_data, conv_doc, conv_image, conv_media, conv_pdf
+from . import conv_data, conv_doc, conv_image, conv_media, conv_pdf, shrink
 from .conv_image import RASTER_IN, RASTER_OUT
 
 ALIASES = {"jpeg": "jpg", "jfif": "jpg", "tif": "tiff", "htm": "html", "markdown": "md", "aif": "aiff", "mpg": "mpeg",
@@ -66,8 +66,17 @@ edge(["txt"], ["docx"], conv_doc.txt_to_docx)
 edge(["html"], ["pdf"], conv_pdf.html_to_pdf)
 edge(["html"], ["txt"], conv_doc.html_to_txt)
 edge(["html"], ["md"], conv_doc.html_to_md)
-edge(["txt"], ["md"], lambda s, o, p: (o.write_text(s.read_text(encoding="utf-8", errors="replace"), encoding="utf-8"), [o])[1])
-edge(["md"], ["txt"], lambda s, o, p: (o.write_text(s.read_text(encoding="utf-8", errors="replace"), encoding="utf-8"), [o])[1])
+def _copy_text(src, out, params):
+    """txt <-> md: same text, any input encoding, saved as UTF-8."""
+    text = conv_doc.read_text(src)
+    if not text.strip():
+        raise ValueError("This file is empty")
+    out.write_text(text, encoding="utf-8")
+    return [out]
+
+
+edge(["txt"], ["md"], _copy_text)
+edge(["md"], ["txt"], _copy_text)
 
 if conv_doc.HAS_POWERPOINT:
     edge(conv_doc.PPT_IN, ["pdf"], conv_doc.ppt_to_pdf)
@@ -171,6 +180,22 @@ def P(name, label, type="text", default=None, **kw):
 
 PAGES = P("pages", "Pages (e.g. 1-3, 5, 8-; blank = all)", "text", "")
 
+
+def SIZE(quality_label=None, default="percent"):
+    """The shared "How small?" controls: a % slider, or a typed-in target size."""
+    opts = [["percent", "Shrink by a percentage"], ["target", "Hit a target size"]]
+    if quality_label:
+        opts.append(["quality", quality_label])
+    return [P("size_mode", "How small?", "select", default, options=opts),
+            P("reduce_pct", "Make it smaller by (%)", "range", 50, min=5, max=95, step=5, show_if={"size_mode": "percent"}),
+            P("target_size", "Target size (at most)", "number", 1, step="any", show_if={"size_mode": "target"}),
+            P("target_unit", "Unit", "select", "MB", options=[["KB", "KB"], ["MB", "MB"], ["GB", "GB"]],
+              show_if={"size_mode": "target"})]
+
+
+QUALITY = {"size_mode": "quality"}
+SIZED = {"size_mode": ["percent", "target"]}
+
 TOOLS = [
     # ---- PDF ----
     dict(id="pdf_merge", cat="PDF", name="Merge PDFs", icon="⊕", multi=True, inputs=["pdf"] + IMG + ["svg"],
@@ -187,9 +212,11 @@ TOOLS = [
                  P("pages", "Pages (e.g. 1-3, 5, 8-)", "text", "")]),
     dict(id="pdf_rotate", cat="PDF", name="Rotate pages", icon="↻", inputs=["pdf"], fn=conv_pdf.tool_rotate,
          params=[P("angle", "Angle", "select", "90", options=[["90", "90° clockwise"], ["180", "180°"], ["270", "90° counter-clockwise"]]), PAGES]),
-    dict(id="pdf_compress", cat="PDF", name="Compress PDF", icon="⇲", inputs=["pdf"], fn=conv_pdf.tool_compress,
-         desc="Downsample images, subset fonts and strip junk.",
-         params=[P("level", "Compression", "select", "medium", options=[["low", "Light (best quality)"], ["medium", "Balanced"], ["high", "Strong"], ["extreme", "Extreme (smallest)"]])]),
+    dict(id="pdf_compress", cat="PDF", name="Compress PDF", icon="⇲", inputs=["pdf"], fn=conv_pdf.tool_compress, ctx=True,
+         desc="Shrink by a percentage or to an exact size: downsamples images, subsets fonts and strips junk.",
+         params=[*SIZE("Pick a compression level"),
+                 P("level", "Compression", "select", "medium", options=[["low", "Light (best quality)"], ["medium", "Balanced"], ["high", "Strong"], ["extreme", "Extreme (smallest)"]], show_if=QUALITY),
+                 P("flatten", "If still too big, flatten pages to images (text stops being selectable)", "checkbox", False, show_if=SIZED)]),
     dict(id="pdf_watermark", cat="PDF", name="Watermark", icon="⌘", inputs=["pdf"], fn=conv_pdf.tool_watermark,
          params=[P("text", "Text", "text", "CONFIDENTIAL"), P("size", "Font size", "number", 60),
                  P("color", "Colour", "color", "#ff0000"), P("opacity", "Opacity", "range", 0.15, min=0.05, max=1, step=0.05),
@@ -205,9 +232,10 @@ TOOLS = [
     dict(id="pdf_images", cat="PDF", name="Extract embedded images", icon="▣", inputs=["pdf"], fn=conv_pdf.tool_extract_images,
          params=[P("min_size", "Ignore images narrower than (px)", "number", 32)]),
     # ---- Images ----
-    dict(id="img_compress", cat="Image", name="Compress images", icon="⇲", inputs=IMG, fn=conv_image.tool_compress,
-         desc="Shrink photos: lower quality, cap dimensions, or switch to WebP/AVIF.",
-         params=[P("quality", "Quality", "range", 75, min=10, max=100, step=1),
+    dict(id="img_compress", cat="Image", name="Compress images", icon="⇲", inputs=IMG, fn=conv_image.tool_compress, ctx=True,
+         desc="Shrink by a percentage or to an exact size (e.g. under 200 KB), or pick a quality yourself.",
+         params=[*SIZE("Set the quality myself"),
+                 P("quality", "Quality", "range", 75, min=10, max=100, step=1, show_if=QUALITY),
                  P("max_side", "Max width/height in px (0 = keep)", "number", 0),
                  P("format", "Output format", "select", "keep", options=[["keep", "Same as input"], ["jpg", "JPG"], ["webp", "WebP (smaller)"], ["png", "PNG"]] + ([["avif", "AVIF (smallest)"]] if "avif" in RASTER_OUT else [])),
                  P("png_colors", "PNG palette colours (0 = full colour)", "number", 0, show_if={"format": "png"})]),
@@ -227,12 +255,21 @@ TOOLS = [
                  P("margin", "Margin (pt)", "number", 0), P("quality", "JPEG quality", "range", 92, min=30, max=100, step=1)]),
     # ---- Video / audio ----
     dict(id="vid_compress", cat="Video & Audio", name="Compress video", icon="⇲", inputs=VID, fn=conv_media.tool_compress_video, ctx=True,
-         desc="Re-encode smaller. Use a quality level, or ask for a target file size.",
-         params=[P("crf", "Quality (lower = better, bigger)", "range", 28, min=18, max=40, step=1),
-                 P("target_mb", "…or target size in MB (0 = use quality)", "number", 0),
+         desc="Shrink by a percentage or to an exact size (two-pass, so it lands on target), or pick a quality.",
+         params=[*SIZE("Set the quality myself"),
+                 P("crf", "Quality (lower = better, bigger)", "range", 28, min=18, max=40, step=1, show_if=QUALITY),
                  P("max_height", "Max resolution", "select", "0", options=[["0", "Keep"], ["2160", "4K"], ["1080", "1080p"], ["720", "720p"], ["480", "480p"], ["360", "360p"]]),
+                 P("auto_res", "Lower the resolution if the size is tight (looks far better)", "checkbox", True, show_if=SIZED),
                  P("codec", "Codec", "select", "h264", options=[["h264", "H.264 (plays everywhere)"], ["h265", "H.265 (≈40% smaller, slower)"]]),
                  P("preset", "Speed", "select", "medium", options=[["veryfast", "Fast"], ["medium", "Balanced"], ["slow", "Slow (smaller)"]])]),
+    dict(id="aud_compress", cat="Video & Audio", name="Compress audio", icon="♫", inputs=sorted(conv_media.AUDIO),
+         fn=conv_media.tool_compress_audio, ctx=True,
+         desc="Shrink songs, voice notes and podcasts by a percentage or to an exact size.",
+         params=[*SIZE("Pick a bitrate"),
+                 P("bitrate", "Bitrate", "select", "96", options=[[b, b + " kbps"] for b in ["32", "48", "64", "96", "128", "160", "192"]], show_if=QUALITY),
+                 P("format", "Save as", "select", "keep", options=[["keep", "Same as input (WAV/FLAC → MP3)"], ["mp3", "MP3"], ["m4a", "M4A (AAC)"], ["opus", "Opus (smallest)"]]),
+                 P("channels", "Channels", "select", "auto", options=[["auto", "Automatic (mono when the size is tight)"], ["stereo", "Keep stereo"], ["mono", "Mono (half the data)"]]),
+                 P("sample_rate", "Sample rate", "select", "0", options=[["0", "Automatic"], ["48000", "48 kHz"], ["44100", "44.1 kHz (CD)"], ["32000", "32 kHz"], ["22050", "22 kHz (voice)"], ["16000", "16 kHz (calls)"]])]),
     dict(id="vid_trim", cat="Video & Audio", name="Trim / cut", icon="✂", inputs=AV, fn=conv_media.tool_trim, ctx=True,
          params=[P("start", "Start (s or hh:mm:ss)", "text", "0"), P("end", "End (blank = to the end)", "text", ""),
                  P("precise", "Frame-accurate (re-encode; off = instant)", "checkbox", True)]),
@@ -248,6 +285,14 @@ TOOLS = [
     dict(id="aud_tools", cat="Video & Audio", name="Volume / normalise audio", icon="♪", inputs=AUD, fn=conv_media.tool_audio_tools, ctx=True,
          params=[P("volume", "Volume %", "range", 100, min=10, max=400, step=5), P("normalize", "Normalise loudness", "checkbox", False),
                  P("fade_in", "Fade in (seconds)", "number", 0)]),
+    # ---- Compress (anything) ----
+    dict(id="compress_any", cat="Compress", name="Compress anything", icon="⇲", inputs=["*"], fn=shrink.tool_compress_any, ctx=True,
+         desc="Drop photos, videos, audio, PDFs, Word/Excel/PowerPoint files or anything else. Each one is squeezed with the right engine; other files are zipped.",
+         params=SIZE() + [P("flatten", "PDFs: if still too big, flatten pages to images", "checkbox", False)]),
+    dict(id="doc_compress", cat="Compress", name="Compress Office documents", icon="▤", fn=shrink.tool_compress_office, ctx=True,
+         inputs=sorted(shrink.OFFICE),
+         desc="Word, Excel, PowerPoint and OpenDocument files: recompresses the pictures inside and repacks the file.",
+         params=SIZE()),
     # ---- Data ----
     dict(id="data_merge", cat="Data", name="Merge spreadsheets", icon="⊕", multi=True, inputs=TABLE, fn=conv_data.tool_merge_tables,
          out_ext="xlsx", desc="Stack rows from several CSV/Excel/JSON files into one sheet.",

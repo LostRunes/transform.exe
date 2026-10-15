@@ -1,0 +1,3 @@
+# large build output & private test certificate - rebuild with packaging/build_msix.ps1
+*.msix
+test-cert/

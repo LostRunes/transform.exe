@@ -1,4 +1,4 @@
-/* Everything Converter — UI. Plain JS, no external libraries (works offline). */
+/* Dr. Doc — UI. Plain JS, no external libraries (works offline). */
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const h = (tag, attrs = {}, ...kids) => {
@@ -25,6 +25,8 @@ async function api(path, body) {
   const r = await fetch(path, opts);
   const data = await r.json().catch(() => ({ ok: false, error: r.statusText }));
   if (!data.ok) throw new Error(data.error || "Request failed");
+  // every started job is tracked from the start, so even an instant one gets its "done" toast
+  if (data.job?.id && typeof known === "object" && !known[data.job.id]) known[data.job.id] = "queued";
   return data;
 }
 
@@ -46,7 +48,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", updateMasc
 const titlebar = (title, cls = "") => h("div", { class: "titlebar " + cls }, h("span", {}, title));
 
 function toast(msg, err = false, ms = 3800) {
-  const t = h("div", { class: "toast win" }, titlebar(err ? "error" : "notice.txt", err ? "err" : ""),
+  const t = h("div", { class: "toast win", role: err ? "alert" : null }, titlebar(err ? "error" : "notice.txt", err ? "err" : ""),
     h("div", { class: "toast-body" }, h("img", { src: mascotSrc().replace(".png", "-sm.png"), alt: "" }), h("span", {}, msg)));
   $("#toasts").append(t);
   setTimeout(() => t.remove(), ms);
@@ -59,9 +61,12 @@ function ask(msg, { title = "are you sure?", yes = "Yes", no = "No", danger = fa
   return new Promise((resolve) => {
     const m = $("#modal");
     const done = (v) => { m.hidden = true; m.replaceChildren(); removeEventListener("keydown", key); resolve(v); };
-    const key = (e) => { if (e.key === "Escape") done(false); if (e.key === "Enter") done(true); };
+    const key = (e) => {
+      if (e.key === "Escape") done(false);
+      else if (e.key === "Enter" && !document.activeElement?.closest?.(".dialog-actions")) done(true);  // a focused button handles Enter itself
+    };
     const yesBtn = h("button", { class: "btn" + (danger ? " danger" : ""), onclick: () => done(true) }, yes);
-    m.replaceChildren(h("div", { class: "dialog win" }, titlebar(title, danger ? "err" : ""),
+    m.replaceChildren(h("div", { class: "dialog win", role: "alertdialog", "aria-modal": "true", "aria-label": title }, titlebar(title, danger ? "err" : ""),
       h("div", { class: "dialog-body" }, mascotImg("float"), h("div", {}, msg)),
       h("div", { class: "dialog-actions" }, yesBtn, h("button", { class: "btn ghost", onclick: () => done(false) }, no))));
     m.onclick = (e) => { if (e.target === m) done(false); };
@@ -88,6 +93,7 @@ const catOf = (e) => S.categories[norm(e)] || "other";
 // ---------------------------------------------------------------- boot
 (async function boot() {
   applyTheme(store.get("theme", null));
+  applyComfort();
   updateMascots();
   try {
     const d = await api("/api/caps");
@@ -98,9 +104,14 @@ const catOf = (e) => S.categories[norm(e)] || "other";
     renderOut();
     // files handed over by "Open with…" / double-click (desktop build passes ?open=[paths])
     const opened = (() => { try { return JSON.parse(new URLSearchParams(location.search).get("open") || "[]"); } catch { return []; } })();
-    route(opened.length ? "convert" : store.get("view", "convert"));
-    if (opened.length) api("/api/fileinfo", { paths: opened }).then((r) => addConvertFiles(r.files)).catch(fail);
+    const linked = decodeURIComponent((location.hash.match(/view=([^&]+)/) || [])[1] || "");  // e.g. #view=help
+    route(opened.length ? "convert" : VIEWS.some((v) => v[0] === linked) ? linked : store.get("view", "convert"));
+    if (location.hash.includes("palette")) window.Help?.openPalette();
+    if (location.hash.includes("notour")) store.set("tour.done", true);
+    const openTo = new URLSearchParams(location.search).get("to");  // e.g. ?to=pdf: "combine these into a PDF"
+    if (opened.length) api("/api/fileinfo", { paths: opened }).then((r) => addConvertFiles(r.files, openTo)).catch(fail);
     pollJobs();
+    window.Tour?.maybeAutoStart();
   } catch (e) {
     document.body.innerHTML = `<p style="padding:40px">Couldn't reach the local server: ${e.message}</p>`;
   }
@@ -129,13 +140,50 @@ $("#theme").onclick = toggleTheme;
 // ---------------------------------------------------------------- buddy & taskbar
 const VIEWS = [
   ["convert", "⇄", "Convert", "convert.exe", "drop anything on me ✦ I'll turn it into anything"],
+  ["tools:Compress", "⇲", "Compress", "compress.exe", "too big? tell me how small and I'll squish it ✧"],
   ["tools:PDF", "▤", "PDF tools", "pdf_tools.exe", "merge, split, squish… pick a tool!"],
   ["editor", "✎", "PDF editor", "paint_a_pdf.exe", "let's scribble on a PDF ✎"],
+  ["office", "▤", "Docs & sheets", "docs_and_sheets.exe", "open a Word doc or a spreadsheet and edit away ✎"],
+  ["video", "🎬", "Video editor", "video_editor.exe", "trim, join, add music… lights, camera, action! 🎬"],
   ["tools:Image", "▧", "Image tools", "image_tools.exe", "photos too big? I'll make them tiny~"],
   ["tools:Video & Audio", "▶", "Video & audio", "video_audio.exe", "gif → mp4, mp4 → mp3… easy ♪"],
   ["tools:Data", "▦", "Spreadsheets", "spreadsheets.exe", "rows and columns, my favourite"],
   ["cleanup", "✦", "Clean up", "clean_up.exe", "let's tidy your computer ✧"],
+  ["help", "?", "Help & manual", "manual.hlp", "stuck? I wrote everything down for you ✎"],
 ];
+Object.assign(window.App, { VIEWS, route, openTool, cycleTextSize, applyComfort, openJobs: () => openJobs() });
+
+// ---------------------------------------------------------------- comfort: text size & motion
+function textSizes() { return [["normal", 1], ["large", 1.15], ["larger", 1.3]]; }  // a function: boot() runs before consts below exist
+function applyComfort() {
+  const size = textSizes().find(([k]) => k === store.get("textSize", "normal")) || textSizes()[0];
+  document.documentElement.style.setProperty("--ui-zoom", size[1]);
+  document.documentElement.classList.toggle("calm", !!store.get("calm", false));
+}
+function cycleTextSize() {
+  const sizes = textSizes(), i = sizes.findIndex(([k]) => k === store.get("textSize", "normal"));
+  const next = sizes[(i + 1) % sizes.length][0];
+  store.set("textSize", next); applyComfort();
+  toast(`Text size: ${next}`);
+}
+function toggleCalm() {
+  store.set("calm", !store.get("calm", false)); applyComfort();
+  toast(store.get("calm") ? "Reduce motion: on (no floating or sparkles)" : "Reduce motion: off");
+}
+
+// ---------------------------------------------------------------- keyboard: Ctrl+K, F1, Alt+1…9
+addEventListener("keydown", (e) => {
+  if (document.querySelector(".tour")) return;
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if ($("#modal").hidden) window.Help?.openPalette(); }
+  else if (e.key === "F1") { e.preventDefault(); window.Help?.show(); }
+  else if (e.altKey && !e.ctrlKey && /^[1-9]$/.test(e.key) && !typing) {
+    const a = $$("#nav a")[+e.key - 1];
+    if (a) { e.preventDefault(); a.click(); }
+  }
+});
+$("#search-btn").onclick = () => window.Help?.openPalette();
+$("#help-btn").onclick = () => window.Help?.show();
 const QUIPS = ["hehe that tickles", "boop!", "✦ sparkle mode ✦", "I don't need the internet, only you", "no file too big!", "*floats happily*", "converting is my cardio"];
 let sayTimer;
 function say(text, ms = 0) {
@@ -159,17 +207,35 @@ function setupTaskbar() {
     ...VIEWS.map(([v, ico, label]) => h("button", { onclick: () => { route(v); closeMenu(); } }, h("span", {}, ico), label)),
     h("hr"),
     h("button", { onclick: () => { api("/api/open", { path: S.outDir }).catch(fail); closeMenu(); } }, h("span", {}, "📁"), "Open output folder"),
-    h("button", { onclick: () => { toggleTheme(); closeMenu(); } }, h("span", {}, "◐"), "Day / night"));
-  const closeMenu = () => { menu.hidden = true; start.classList.remove("on"); };
-  start.onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; start.classList.toggle("on", !menu.hidden); };
+    h("button", { onclick: () => { toggleTheme(); closeMenu(); } }, h("span", {}, "◐"), "Day / night"),
+    h("hr"),
+    h("button", { onclick: () => { closeMenu(); window.Help?.show(); } }, h("span", {}, "?"), "Help & manual"),
+    h("button", { onclick: () => { closeMenu(); window.Tour?.start(0); } }, h("span", {}, "▶"), "Take the tour"),
+    h("button", { onclick: () => { closeMenu(); window.Help?.openPalette(); } }, h("span", {}, "🔍"), "Find a tool… (Ctrl+K)"),
+    h("button", { onclick: () => { cycleTextSize(); } }, h("span", {}, "A"), "Text size"),
+    h("button", { onclick: () => { toggleCalm(); closeMenu(); } }, h("span", {}, "≈"), "Reduce motion"));
+  $$("#start-items button").forEach((b) => b.setAttribute("role", "menuitem"));
+  const closeMenu = (focusStart) => { menu.hidden = true; start.classList.remove("on"); start.setAttribute("aria-expanded", "false"); if (focusStart) start.focus(); };
+  start.onclick = (e) => {
+    e.stopPropagation(); menu.hidden = !menu.hidden; start.classList.toggle("on", !menu.hidden); start.setAttribute("aria-expanded", String(!menu.hidden));
+    if (!menu.hidden) $("#start-items button")?.focus();
+  };
+  menu.onkeydown = (e) => {
+    const items = $$("#start-items button"), i = items.indexOf(document.activeElement);
+    if (e.key === "Escape") closeMenu(true);
+    else if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+  };
   addEventListener("click", (e) => { if (!menu.hidden && !menu.contains(e.target)) closeMenu(); });
 }
 
 // ---------------------------------------------------------------- routing
-$$("#nav a").forEach((a) => (a.onclick = () => route(a.dataset.view)));
+$$("#nav a").forEach((a) => (a.onclick = (e) => { e.preventDefault(); route(a.dataset.view); }));
+$("#buddy").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } };
 function route(view) {
   S.view = view; store.set("view", view);
-  $$("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
+  $$("#nav a").forEach((a) => { a.classList.toggle("active", a.dataset.view === view); a.toggleAttribute("aria-current", a.dataset.view === view); });
+  document.title = view === "convert" ? "Dr. Doc" : `${VIEWS.find((v) => v[0] === view)?.[2] || "Dr. Doc"} · Dr. Doc`;
   $$(".view").forEach((v) => (v.hidden = true));
   const [kind, cat] = view.split(":");
   const meta = VIEWS.find((v) => v[0] === view);
@@ -179,6 +245,16 @@ function route(view) {
   else if (kind === "tools") { $("#view-tools").hidden = false; S.currentTool = null; renderToolGrid(cat); }
   else if (kind === "editor") { $("#view-editor").hidden = false; window.Editor?.mount($("#view-editor")); }
   else if (kind === "cleanup") { $("#view-cleanup").hidden = false; renderCleanup(); }
+  else if (kind === "office") { $("#view-office").hidden = false; mountModule("Office", "#view-office", "Docs & sheets"); }
+  else if (kind === "video") { $("#view-video").hidden = false; mountModule("VideoEditor", "#view-video", "The video editor"); }
+  else if (kind === "help") { $("#view-help").hidden = false; window.Help?.mount($("#view-help")); }
+}
+
+/** Feature screens live in their own script (office.js, video.js) and expose window.X.mount(el). */
+function mountModule(name, sel, label) {
+  const el = $(sel);
+  if (window[name]?.mount) window[name].mount(el);
+  else el.replaceChildren(h("div", { class: "card" }, h("h3", {}, label + " isn't installed in this build.")));
 }
 
 // ---------------------------------------------------------------- adding files
@@ -213,6 +289,8 @@ addEventListener("drop", async (e) => {
   try {
     const files = await uploadFiles(e.dataTransfer.files);
     if (S.view === "editor") window.Editor?.openFile(files.find((f) => f.ext === "pdf"));
+    else if (S.view === "office") window.Office?.openFile(files[0]);
+    else if (S.view === "video") window.VideoEditor?.addFiles(files);
     else addFiles(files);
   } catch (err) { fail(err); }
 });
@@ -221,7 +299,7 @@ function addFiles(files) {
   if (S.view === "convert") { addConvertFiles(files); return; }
   if (S.currentTool) {
     const t = S.currentTool;
-    const ok = files.filter((f) => t.inputs.includes(f.ext));
+    const ok = files.filter((f) => t.inputs.includes("*") || t.inputs.includes(f.ext));
     if (ok.length < files.length) toast(`${files.length - ok.length} file(s) skipped: not supported by “${t.name}”`, true);
     S.toolFiles[t.id] = [...(S.toolFiles[t.id] || []), ...ok];
     renderToolPage(t);
@@ -234,7 +312,7 @@ function dropzone(onAdd, accept) {
   const pathIn = h("input", { type: "text", placeholder: "…or paste a file / folder path and press Enter" });
   pathIn.onkeydown = async (e) => {
     if (e.key !== "Enter" || !pathIn.value.trim()) return;
-    try { const d = await api("/api/fileinfo", { paths: pathIn.value.split(/\r?\n|;/) }); if (!d.files.length) throw new Error("No files found at that path"); onAdd(d.files); pathIn.value = ""; } catch (err) { fail(err); }
+    try { const d = await api("/api/fileinfo", { paths: pathIn.value.split(/\r?\n/) }); if (!d.files.length) throw new Error("No files found at that path"); onAdd(d.files); pathIn.value = ""; } catch (err) { fail(err); }
   };
   return h("div", { class: "dropzone win" }, titlebar("drop_files_here.exe"),
     h("div", { class: "dz-body" },
@@ -258,14 +336,15 @@ function fileRow(f, { right, onRemove, draggable, list, rerender }) {
     thumb,
     h("div", { class: "meta" }, h("div", { class: "name", title: f.path }, f.name), h("div", { class: "sub" }, `${f.ext.toUpperCase()} · ${f.size_h}`)),
     right?.[0] || h("span"), right?.[1] || h("span"),
-    h("button", { class: "x", title: "Remove", onclick: onRemove }, "✕"));
+    h("button", { class: "x", title: "Remove", "aria-label": `Remove ${f.name}`, onclick: onRemove }, "✕"));
   if (draggable) {
     row.ondragstart = (e) => { row.classList.add("dragging"); e.dataTransfer.setData("text/x-index", list.indexOf(f)); e.stopPropagation(); };
     row.ondragend = () => row.classList.remove("dragging");
     row.ondragover = (e) => e.preventDefault();
     row.ondrop = (e) => {
-      const from = +e.dataTransfer.getData("text/x-index");
-      if (Number.isNaN(from) || e.dataTransfer.files.length) return;
+      const raw = e.dataTransfer.getData("text/x-index");
+      if (raw === "" || e.dataTransfer.files.length) return;
+      const from = +raw;
       e.preventDefault(); e.stopPropagation();
       const to = list.indexOf(f);
       const [m] = list.splice(from, 1); list.splice(to, 0, m); rerender();
@@ -294,9 +373,11 @@ function renderParams(params, values = {}) {
     } else if (p.type === "color") {
       input = h("input", { type: "color", value: v });
     } else {
-      input = h("input", { type: p.type === "number" ? "number" : p.type === "password" ? "password" : "text", value: v ?? "" });
+      input = h("input", { type: p.type === "number" ? "number" : p.type === "password" ? "password" : "text", value: v ?? "", step: p.step ?? null, min: p.type === "number" ? p.min ?? null : null });
     }
-    box = box || h("div", { class: "opt" }, h("label", {}, p.label), input);
+    input.id ||= "opt-" + p.name + "-" + Math.random().toString(36).slice(2, 7);
+    box = box || h("div", { class: "opt" }, h("label", { for: input.id }, p.label), input);
+    if (p.type === "range") { box.querySelector("label").setAttribute("for", input.id); input.setAttribute("aria-valuetext", String(v)); input.addEventListener("input", () => input.setAttribute("aria-valuetext", input.value)); }
     box.dataset.name = p.name;
     inputs[p.name] = { input, p, box };
     wrap.append(box);
@@ -304,11 +385,14 @@ function renderParams(params, values = {}) {
   const sync = () => {
     for (const { p, box } of Object.values(inputs)) {
       if (!p.show_if) continue;
-      box.hidden = !Object.entries(p.show_if).every(([k, val]) => inputs[k] && String(readOne(inputs[k])) === String(val));
+      box.hidden = !Object.entries(p.show_if).every(([k, val]) => inputs[k] && !inputs[k].box.hidden &&
+        [val].flat().map(String).includes(String(readOne(inputs[k]))));
     }
+    wrap.onsync?.();
   };
   wrap.addEventListener("input", sync); wrap.addEventListener("change", sync); sync();
   wrap._inputs = inputs;
+  wrap._sync = sync;
   return wrap;
 }
 function readOne({ input, p }) {
@@ -337,14 +421,16 @@ let convertOpts = null;
 async function ensureTargets(exts) {
   const missing = [...new Set(exts)].filter((e) => !(e in S.targets));
   if (missing.length) Object.assign(S.targets, (await api("/api/targets", { exts: missing })).targets);
+  // A PDF can "go to PDF" too: it joins the other files when they're combined.
+  if (S.targets.pdf && !S.targets.pdf.includes("pdf")) S.targets.pdf.unshift("pdf");
 }
 
-async function addConvertFiles(files) {
+async function addConvertFiles(files, want = null) {
   await ensureTargets(files.map((f) => f.ext));
   for (const f of files) {
     const t = S.targets[f.ext] || [];
     const last = store.get("lastTarget." + f.ext, null);
-    f.target = t.includes(last) ? last : t.includes(DEFAULT_TARGET[f.ext]) ? DEFAULT_TARGET[f.ext] : t[0] || "";
+    f.target = t.includes(want) ? want : t.includes(last) ? last : t.includes(DEFAULT_TARGET[f.ext]) ? DEFAULT_TARGET[f.ext] : t[0] || "";
     f.bad = !t.length;
     S.convertFiles.push(f);
   }
@@ -368,15 +454,19 @@ function renderConvert() {
   v.replaceChildren();
   v.append(dropzone(addConvertFiles));
   if (!files.length) {
-    v.append(h("div", { class: "section-label" }, "What can it do?"),
+    const tool = (id) => () => openTool(S.tools.find((t) => t.id === id));
+    v.append(h("div", { class: "section-label" }, "What do you want to do?"),
       h("div", { class: "tool-grid" }, ...[
-        ["▧", "Images", "JPG · PNG · WebP · HEIC · AVIF · GIF · TIFF · ICO · SVG (vectorise) · PDF"],
-        ["▤", "Documents", "PDF ⇄ Word · Excel/PowerPoint → PDF · Markdown · HTML · RTF · ODT · TXT"],
-        ["▦", "Spreadsheets", "XLSX · CSV · TSV · JSON · XML · SQL · Markdown tables · PDF"],
-        ["▶", "Video", "MP4 · MKV · MOV · WebM · AVI · GIF ⇄ MP4 and more"],
-        ["♪", "Audio", "MP3 · WAV · FLAC · M4A · OGG · Opus · extract audio from video"],
-        ["✦", "Tools", "Merge/split/compress PDFs, compress photos & videos, edit PDFs, clean up disk"],
-      ].map(([i, t, d]) => h("div", { class: "tool-card", style: "cursor:default" }, h("div", { class: "ti" }, i), h("b", {}, t), h("p", {}, d)))));
+        ["⊕", "Combine photos into a PDF", "Arrange pictures, then make one PDF, one each, or groups", tool("img_to_pdf")],
+        ["⇲", "Make a file smaller", "Any file, by a % or to an exact size like 200 KB", tool("compress_any")],
+        ["✎", "Edit a PDF", "Change text, add notes, shapes, signatures", () => route("editor")],
+        ["▤", "Open a Word or Excel file", "Read, edit and save documents and spreadsheets", () => route("office")],
+        ["🎬", "Edit a video", "Trim, join clips, add music and titles", () => route("video")],
+        ["⊞", "Merge or split PDFs", "Combine PDFs, pull out or reorder pages", () => route("tools:PDF")],
+        ["♪", "Convert video or audio", "MP4 → MP3, MOV → MP4, GIF ⇄ MP4 …", () => route("tools:Video & Audio")],
+        ["?", "Show me around", "A one-minute tour of Dr. Doc", () => window.Tour?.start(0)],
+      ].map(([i, t, d, go]) => h("button", { class: "tool-card", onclick: go }, h("div", { class: "ti" }, i), h("b", {}, t), h("p", {}, d)))),
+      h("p", { class: "muted sm", style: "margin-top:16px" }, "Or just drop files above to convert them to any format: images, documents, spreadsheets, video and audio."));
     return;
   }
 
@@ -392,18 +482,25 @@ function renderConvert() {
   actions.append(h("button", { class: "btn ghost sm", onclick: () => { S.convertFiles = []; renderConvert(); } }, "Clear all"));
   v.append(actions);
 
+  // Two or more files going to PDF: arrange them visually and choose one PDF / one each / groups.
+  const toPdf = files.filter((f) => f.target === "pdf" && !f.bad);
+  const organise = toPdf.length >= 2 && window.Organizer;
+  if (organise) v.append(pdfOrganiser(toPdf, files));
+
   const list = h("div", { class: "files" });
   for (const f of files) {
+    if (organise && toPdf.includes(f)) continue;
     const tg = S.targets[f.ext] || [];
     const sel = tg.length ? targetSelect(tg, f.target, (t) => { f.target = t; store.set("lastTarget." + f.ext, t); renderConvert(); })
       : h("span", { class: "muted sm" }, "No converter for this type");
     list.append(fileRow(f, { right: [h("span", { class: "arrow" }, "→"), sel], onRemove: () => { files.splice(files.indexOf(f), 1); renderConvert(); } }));
   }
-  v.append(list);
+  if (list.children.length) v.append(...[organise && h("div", { class: "section-label" }, "Other files"), list].filter(Boolean));
 
   // options relevant to the chosen targets
   const groups = new Set();
   for (const f of files) {
+    if (organise && toPdf.includes(f)) continue;
     const tc = catOf(f.target), sc = catOf(f.ext);
     if (f.target === "svg") groups.add("svg");
     else if ((tc === "image" || f.target === "gif") && ["doc", "data"].includes(sc)) groups.add("from_pdf_image");
@@ -419,16 +516,48 @@ function renderConvert() {
   if (params.length) v.append(h("div", { class: "card", style: "margin-top:14px" }, h("h3", { style: "margin-bottom:12px" }, "options.ini"), convertOpts));
 
   const ready = files.filter((f) => f.target && !f.bad);
+  const plan = organise ? Organizer.plan(toPdf.length, S.pdfOut) : null;
+  const label = organise ? `Convert ${ready.length} file(s)` + (plan.error ? "" : ` → ${plan.groups.length + ready.length - toPdf.length} result(s)`) : `Convert ${ready.length} file(s)`;
   v.append(h("div", { class: "runbar" },
-    h("button", { class: "btn big", disabled: !ready.length, onclick: runConvert }, `Convert ${ready.length} file(s)`),
+    h("button", { class: "btn big", disabled: !ready.length || !!plan?.error, onclick: runConvert }, label),
     h("span", { class: "muted sm" }, "Saved to: " + S.outDir)));
 }
 
+/** The organiser block on the Convert page for files whose target is PDF. */
+function pdfOrganiser(toPdf, all) {
+  S.pdfOut ||= Organizer.defaults();
+  const rerender = () => renderConvert();
+  const plan = Organizer.plan(toPdf.length, S.pdfOut);
+  const groupOf = S.pdfOut.mode === "groups" && !plan.error ? (i) => { const g = plan.groups.findIndex((x) => x.includes(i)); return g < 0 ? null : g; } : null;
+  const onChange = ({ focus } = {}) => {
+    // the grid reorders/removes in toPdf; mirror that into the main list
+    S.convertFiles = [...all.filter((f) => !(f.target === "pdf" && !f.bad)), ...toPdf];
+    rerender();
+    if (focus != null) requestAnimationFrame(() => $("#view-convert .org-grid")?.focusCard(focus));
+  };
+  const targetPick = (f) => {
+    const tg = S.targets[f.ext] || [];
+    return tg.length > 1 ? h("label", { class: "org-target" }, "→ ", targetSelect(tg, f.target, (t) => { f.target = t; store.set("lastTarget." + f.ext, t); rerender(); })) : null;
+  };
+  return h("div", { class: "org-wrap" },
+    h("div", { class: "section-label" }, `${toPdf.length} files → PDF`),
+    Organizer.outputPanel(toPdf, S.pdfOut, rerender),
+    Organizer.toolbar(toPdf, onChange),
+    Organizer.grid(toPdf, { onChange, groupOf, extra: targetPick }));
+}
+
 async function runConvert() {
-  const items = S.convertFiles.filter((f) => f.target && !f.bad).map((f) => ({ path: f.path, target: f.target }));
+  const ready = S.convertFiles.filter((f) => f.target && !f.bad);
+  const toPdf = ready.filter((f) => f.target === "pdf");
+  const organise = toPdf.length >= 2 && window.Organizer;
+  const same = ready.filter((f) => f.ext === f.target && !(organise && toPdf.includes(f)));  // e.g. one PDF "→ PDF": nothing to do
+  if (same.length) toast(`${same.length} file(s) skipped: already ${same[0].target.toUpperCase()}. Add more files to combine them.`);
+  const items = ready.filter((f) => !(organise && toPdf.includes(f)) && !same.includes(f)).map((f) => ({ path: f.path, target: f.target }));
   try {
-    await api("/api/convert", { items, out_dir: S.outDir, params: readParams(convertOpts) });
-    toast(`Started converting ${items.length} file(s)`);
+    if (organise) await Organizer.run(toPdf, S.pdfOut);
+    if (items.length) await api("/api/convert", { items, out_dir: S.outDir, params: readParams(convertOpts) });
+    if (!organise && !items.length) return;
+    toast(`Started converting ${ready.length} file(s)`);
     S.convertFiles = []; renderConvert();
     openJobs(); pollJobs(true);
   } catch (e) { fail(e); }
@@ -439,15 +568,21 @@ function renderToolGrid(cat) {
   const v = $("#view-tools");
   const tools = S.tools.filter((t) => t.cat === cat);
   v.replaceChildren(h("div", { class: "tool-grid" }, ...tools.map((t) =>
-    h("div", { class: "tool-card", onclick: () => { S.currentTool = t; renderToolPage(t); } },
+    h("button", { class: "tool-card", onclick: () => { S.currentTool = t; renderToolPage(t); } },
       h("div", { class: "ti" }, t.icon), h("b", {}, t.name), h("p", {}, t.desc || shortAccepts(t))))));
   if (cat === "PDF") v.append(h("div", { class: "section-label" }, "Edit text, draw diagrams & annotate"),
-    h("div", { class: "tool-grid" }, h("div", { class: "tool-card", onclick: () => route("editor") },
+    h("div", { class: "tool-grid" }, h("button", { class: "tool-card", onclick: () => route("editor") },
       h("div", { class: "ti" }, "✎"), h("b", {}, "Open the PDF editor"), h("p", {}, "Change existing text, add text, shapes, arrows, freehand, highlights, images, whiteout."))));
   if (cat === "PDF" || cat === "Data" || cat === "Image") v.append(h("p", { class: "muted sm", style: "margin-top:18px" },
     "Format changes (e.g. PDF → Word, Excel → CSV, PNG → SVG) are on the ", h("a", { href: "#", onclick: (e) => { e.preventDefault(); route("convert"); } }, "Convert"), " page."));
 }
-const shortAccepts = (t) => t.inputs.slice(0, 8).map((e) => e.toUpperCase()).join(", ") + (t.inputs.length > 8 ? "…" : "");
+const shortAccepts = (t) => t.inputs.includes("*") ? "Any file" : t.inputs.slice(0, 8).map((e) => e.toUpperCase()).join(", ") + (t.inputs.length > 8 ? "…" : "");
+
+function openTool(t) {
+  if (!t) return;
+  route("tools:" + t.cat);
+  S.currentTool = t; renderToolPage(t);
+}
 
 let toolOpts = null;
 function renderToolPage(t) {
@@ -458,6 +593,7 @@ function renderToolPage(t) {
     h("button", { class: "back", onclick: () => { S.currentTool = null; renderToolGrid(t.cat); } }, "← All " + t.cat + " tools"),
     h("div", { class: "tool-head" }, h("div", { class: "ti" }, t.icon), h("div", {}, h("h2", {}, t.name), h("p", {}, t.desc || ""))),
     dropzone((fs) => addFiles(fs), shortAccepts(t)));
+  if (ORGANISED_TOOLS.includes(t.id) && window.Organizer) return renderOrganisedTool(t, v, files);
   if (files.length) {
     const list = h("div", { class: "files" });
     const rerender = () => renderToolPage(t);
@@ -468,10 +604,58 @@ function renderToolPage(t) {
   toolOpts = renderParams(t.params, prev);
   toolOpts._tool = t.id;
   if (t.params.length) v.append(h("div", { class: "card", style: "margin-top:14px" }, h("h3", { style: "margin-bottom:12px" }, "settings.ini"), toolOpts));
+  if (toolOpts._inputs.size_mode) {
+    const est = h("div", { class: "size-est" });
+    toolOpts.append(est);
+    toolOpts.onsync = () => { est.textContent = sizeEstimate(files, readParams(toolOpts)); est.hidden = !est.textContent; };
+    toolOpts._sync();
+  }
   const need = t.multi ? 2 : 1;
   v.append(h("div", { class: "runbar" },
     h("button", { class: "btn big", disabled: files.length < (t.id === "pdf_merge" || t.id === "vid_concat" ? need : 1), onclick: () => runTool(t) }, t.name),
     h("span", { class: "muted sm" }, "Saved to: " + S.outDir)));
+}
+
+// Tools whose files are arranged in the visual organiser and can produce one PDF, one each, or groups.
+const ORGANISED_TOOLS = ["pdf_merge", "img_to_pdf"];
+function renderOrganisedTool(t, v, files) {
+  S.pdfOut ||= Organizer.defaults();
+  const st = S.pdfOut;
+  const rerender = () => renderToolPage(t);
+  if (files.length) {
+    const plan = Organizer.plan(files.length, st);
+    const groupOf = st.mode === "groups" && !plan.error ? (i) => { const g = plan.groups.findIndex((x) => x.includes(i)); return g < 0 ? null : g; } : null;
+    const onChange = ({ focus } = {}) => { rerender(); if (focus != null) requestAnimationFrame(() => $("#view-tools .org-grid")?.focusCard(focus)); };
+    v.append(h("div", { class: "file-actions" }, h("b", {}, `${files.length} file(s)`), h("span", { class: "spacer" }),
+      h("button", { class: "btn ghost sm", onclick: () => { S.toolFiles[t.id] = []; rerender(); } }, "Clear")),
+      Organizer.outputPanel(files, st, rerender), Organizer.toolbar(files, onChange), Organizer.grid(files, { onChange, groupOf }));
+    v.append(h("div", { class: "runbar" },
+      h("button", { class: "btn big", disabled: !!plan.error, onclick: async () => {
+        try {
+          await Organizer.run(files, st);
+          toast(`Started: ${t.name}`);
+          S.toolFiles[t.id] = []; rerender(); openJobs(); pollJobs(true);
+        } catch (e) { fail(e); }
+      } }, plan.error ? t.name : `Make ${plan.groups.length} PDF${plan.groups.length === 1 ? "" : "s"}`),
+      h("span", { class: "muted sm" }, "Saved to: " + S.outDir)));
+  }
+}
+
+const UNIT = { KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3 };
+const humanSize = (n) => { const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0; while (n >= 1024 && i < 4) { n /= 1024; i++; } return (i ? n.toFixed(1) : n.toFixed(0)) + " " + u[i]; };
+/** One line saying what the size controls will aim for, given the files picked so far. */
+function sizeEstimate(files, p) {
+  if (p.size_mode === "target") {
+    const limit = Number(p.target_size) * (UNIT[p.target_unit] || UNIT.MB);
+    if (!(limit > 0)) return "Type a size to aim for.";
+    const under = files.filter((f) => f.size <= limit).length;
+    return `Each file will be made ${humanSize(limit)} or smaller.` + (under ? ` ${under} already fit${under > 1 ? "" : "s"} and will be copied as-is.` : "");
+  }
+  if (p.size_mode === "percent" && files.length) {
+    const total = files.reduce((a, f) => a + (f.size || 0), 0);
+    return `≈ ${humanSize(total)} → ${humanSize(total * (100 - p.reduce_pct) / 100)} in total`;
+  }
+  return "";
 }
 
 async function runTool(t) {
@@ -485,7 +669,7 @@ async function runTool(t) {
 }
 
 // ---------------------------------------------------------------- Jobs
-const known = {};
+var known = {};  // var: api() may look at it before this line has run
 let pollTimer = null;
 let lastJobsKey = "";
 const syncJobsBtn = () => $("#jobs-toggle").classList.toggle("on", !$("#jobs").hidden);
@@ -506,6 +690,7 @@ async function pollJobs(force) {
       if (was && was !== j.status && ["done", "error", "cancelled"].includes(j.status)) {
         j.status === "done" ? toast("✓ " + j.title + ": " + j.message) : toast(j.title + ": " + j.message, true, 6000);
         window.Editor?.onJobDone?.(j);
+        window.VideoEditor?.onJobDone?.(j); window.Office?.onJobDone?.(j);
       }
       known[j.id] = j.status;
     }
@@ -514,11 +699,29 @@ async function pollJobs(force) {
 }
 
 const base = (p) => p.split(/[\\/]/).pop();
+// Finished files can go straight into the matching editor.
+const EDITORS = { pdf: "editor", docx: "office", doc: "office", odt: "office", rtf: "office", txt: "office", md: "office", html: "office",
+  xlsx: "office", xls: "office", ods: "office", csv: "office", tsv: "office", pptx: "office",
+  mp4: "video", mov: "video", mkv: "video", webm: "video", avi: "video", m4v: "video", mp3: "video", wav: "video", m4a: "video" };
+const editorFor = (p) => {
+  const v = EDITORS[(p.split(".").pop() || "").toLowerCase()];
+  return v && (v === "editor" || window[v === "office" ? "Office" : "VideoEditor"]) ? v : null;
+};
+async function editInApp(p) {
+  try {
+    const [f] = (await api("/api/fileinfo", { paths: [p] })).files;
+    const v = editorFor(p);
+    route(v);
+    if (v === "editor") window.Editor?.openFile(f);
+    else if (v === "office") window.Office?.openFile(f);
+    else window.VideoEditor?.addFiles([f]);
+  } catch (e) { fail(e); }
+}
 function renderJobs(jobs) {
   const running = jobs.filter((j) => j.status === "running" || j.status === "queued").length;
   const b = $("#jobs-count"); b.textContent = running; b.classList.toggle("zero", !running);
   const list = $("#jobs-list");
-  const key = JSON.stringify(jobs.map((j) => [j.id, j.status, j.message, j.progress, j.outputs.length]));
+  const key = JSON.stringify(jobs.map((j) => [j.id, j.status, j.message, j.progress, j.outputs.length, j.notes?.length]));
   if (key === lastJobsKey) return;  // unchanged: don't re-render (keeps animations smooth)
   lastJobsKey = key;
   if (running) say(`working on it… ${running} job${running > 1 ? "s" : ""} running ⏳`);
@@ -532,8 +735,10 @@ function renderJobs(jobs) {
     j.outputs.length ? h("div", { class: "outs" }, ...j.outputs.slice(0, 30).map((p) => h("div", { class: "out-item" },
       h("span", { title: p }, base(p)),
       h("a", { onclick: () => api("/api/open", { path: p, reveal: false }).catch(fail) }, "Open"),
-      h("a", { onclick: () => api("/api/open", { path: p }).catch(fail) }, "Show"))),
+      h("a", { onclick: () => api("/api/open", { path: p }).catch(fail) }, "Show"),
+      editorFor(p) ? h("a", { title: "Open it in Dr. Doc's editor", onclick: () => editInApp(p) }, "Edit") : null)),
       j.outputs.length > 30 ? h("div", { class: "muted sm" }, `…and ${j.outputs.length - 30} more`) : null) : null,
+    j.notes?.length ? h("div", { class: "notes" }, j.notes.join("\n")) : null,
     j.errors.length ? h("div", { class: "errs" }, j.errors.join("\n")) : null)));
 }
 
@@ -590,7 +795,7 @@ async function renderCleanup() {
     results.replaceChildren(h("div", { class: "row muted" }, h("span", { class: "spinner" }), "Scanning… big folders can take a while"));
     scanBtn.disabled = true;
     try {
-      const r = await api("/api/clean/scan", { kind: cleanTab, folder, min_kb: +minIn.value || 1, min_mb: +minIn.value || 100 });
+      const r = await api("/api/clean/scan", { kind: cleanTab, folder, min_kb: minIn.value === "" ? 1 : +minIn.value, min_mb: minIn.value === "" ? 100 : +minIn.value });
       renderFindings(results, r);
     } catch (e) { fail(e); results.replaceChildren(); }
     scanBtn.disabled = false;
