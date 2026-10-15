@@ -10,7 +10,7 @@ Everything needed to publish the Android app. The Windows version has its own gu
 
 App facts you'll be asked for:
 
-* **Package name:** `com.abinashmohanty.drdoc` (permanent; it can never change once uploaded)
+* **Package name:** `app.drdoc.android` (permanent; it can never change once uploaded)
 * **Version:** 1.0.0 (version code 1). Bump `version:` in `pubspec.yaml` (e.g. `1.0.1+2`) for every new upload; the number after `+` must always go up.
 * **Target / min SDK:** Android 16 (API 36) / Android 7.0 (API 24). Native libraries are 16 KB page-aligned (checked).
 * **Privacy policy URL:** https://lostrunes.github.io/Dr.-Doc-privacy-policy/

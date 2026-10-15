@@ -1,4 +1,4 @@
-package com.abinashmohanty.drdoc
+package app.drdoc.android
 
 import android.content.Context
 import android.media.MediaExtractor

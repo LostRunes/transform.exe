@@ -15,7 +15,7 @@ val keystoreProperties = Properties().apply {
 val hasUploadKey = keystoreProperties.getProperty("storeFile") != null
 
 android {
-    namespace = "com.abinashmohanty.drdoc"
+    namespace = "app.drdoc.android"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -29,7 +29,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.abinashmohanty.drdoc"
+        applicationId = "app.drdoc.android"
         // PDFium (pdfrx) and the camera plugin both need 21+; 24 keeps the
         // native image codecs well-behaved too.
         minSdk = 24
