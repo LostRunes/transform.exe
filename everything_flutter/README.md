@@ -17,7 +17,7 @@ flutter build apk --release      # release APK (for sideloading)
 flutter build appbundle --release # Google Play bundle, signed with the upload key
 ```
 
-Package name: `com.abinashmohanty.drdoc`. Release builds are signed with the Play
+Package name: `app.drdoc.android`. Release builds are signed with the Play
 **upload key** in `android/upload-keystore.jks` + `android/key.properties` (both git-ignored;
 without them the release build falls back to the debug key and prints a warning).
 Publishing on Google Play, including the upload key, every Play Console form and the

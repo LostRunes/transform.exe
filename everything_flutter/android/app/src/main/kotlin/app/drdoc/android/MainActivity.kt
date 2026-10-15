@@ -1,4 +1,4 @@
-package com.abinashmohanty.drdoc
+package app.drdoc.android
 
 import androidx.media3.common.util.UnstableApi
 import io.flutter.embedding.android.FlutterActivity
