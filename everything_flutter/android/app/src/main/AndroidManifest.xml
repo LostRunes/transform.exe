@@ -16,11 +16,9 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
-    <!-- Opt-in, and only used by the Clean up page. Android's folder picker
-         refuses to grant access to Download or the root of internal storage,
-         so finding duplicates there is impossible without this. The app never
-         requests it on launch; the user has to turn it on themselves. -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- Never request "All files access": Google Play only allows it for file managers,
+         backup and antivirus apps. Removed explicitly so no dependency can add it back. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:node="remove" />
 
     <!-- This app is entirely offline: every conversion runs on the device.
          A dependency that declares INTERNET would have it merged in silently,
@@ -37,7 +35,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
 
     <application
-        android:label="Everything Converter"
+        android:label="Dr. Doc"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">

@@ -1,12 +1,12 @@
 ﻿Dr. Doc MSIX build
-Built:                 2026-10-15 15:24
-Version:               1.0.0.0
+Built:                 2026-10-15 23:41
+Version:               1.0.1.0
 Identity Name:         AbinashMohanty.Dr.Doc
 Publisher:             CN=DEC1B337-0FF8-47BA-AE6D-51B563D43722
 PublisherDisplayName:  Abinash Mohanty
 Store identity:        yes
-MSIX:                  store\DrDoc_1.0.0.0_x64.msix  (296.1 MB, SHA256 ED939174624040CC740D4ACCF5D588699ADB1B118ACE7E2C9CC47C79B7D4BF76)
+MSIX:                  store\DrDoc_1.0.1.0_x64.msix  (296.7 MB, SHA256 1EB758F4E57ACA57AEAC460956273A64677B1AA91AB366961D28C20D376B4293)
 ffmpeg:                ffmpeg version 9.0.1-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers
 ffmpeg is GPL build:   True
 Smoke test:            PASSED
-Rebuild:               powershell -ExecutionPolicy Bypass -File packaging\build_msix.ps1 -Version 1.0.0.0 -IdentityName "AbinashMohanty.Dr.Doc" -Publisher "CN=DEC1B337-0FF8-47BA-AE6D-51B563D43722" -PublisherDisplayName "Abinash Mohanty" -FfmpegDir "C:\Users\KIIT\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.1-full_build\bin"
+Rebuild:               powershell -ExecutionPolicy Bypass -File packaging\build_msix.ps1 -Version 1.0.1.0 -IdentityName "AbinashMohanty.Dr.Doc" -Publisher "CN=DEC1B337-0FF8-47BA-AE6D-51B563D43722" -PublisherDisplayName "Abinash Mohanty" -FfmpegDir "C:\Users\KIIT\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.1-full_build\bin"

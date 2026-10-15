@@ -1,0 +1,3 @@
+# release bundles are rebuilt with flutter build appbundle; never commit them
+*.aab
+*.apk

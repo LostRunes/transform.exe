@@ -6,9 +6,11 @@ Limits are noted in brackets. Re-check the feature list once the Docs & sheets a
 ---
 
 ## Product name
+
 **Dr. Doc**. If the name is taken, see the alternatives in `store/README.md` step 2.
 
 ## Short description  *(shown on some surfaces; ≤ 270 characters is safe)*
+
 Convert, compress and edit any file, privately, on your own PC. PDFs, Word, Excel, PowerPoint, photos, HEIC, video and audio. Shrink files to an exact size, edit PDFs, trim videos and tidy your disk. 100% offline: your files never leave your computer.
 
 ## Description  *(≤ 10,000 characters)*
@@ -53,6 +55,7 @@ A cosy retro-desktop look with a cute mascot, day and night themes, larger-text 
 *Word, Excel and PowerPoint → PDF use Microsoft Office when it is installed for the most faithful result. Built-in converters are used otherwise.*
 
 ## What's new in this version  *(≤ 1,500 characters)*
+
 First release of Dr. Doc on the Microsoft Store:
 • Convert between dozens of document, image, spreadsheet, audio and video formats
 • Compress any file to an exact size or percentage
@@ -63,13 +66,16 @@ First release of Dr. Doc on the Microsoft Store:
 Everything runs offline on your PC.
 
 ## Release notes (for your own changelog / GitHub)
+
 **1.0.0 (first Store release)**
+
 - New native Windows window (WebView2) with real Windows file and folder pickers
 - "Open with → Dr. Doc" for PDF, Office, image, audio, video, Markdown, text and HTML files; a second launch hands its files to the open window
 - Bundled FFmpeg, so video and audio work out of the box
 - All features from the desktop version: convert, compress-to-size, PDF tools, PDF editor, image tools, video & audio tools, clean-up
 
 ## Product features  *(up to 20 bullets, ≤ 200 characters each)*
+
 1. Convert PDF, Word, Excel, PowerPoint, images, HEIC, video and audio, all offline
 2. Compress any file to an exact size (e.g. under 200 KB) or by a percentage
 3. Edit PDF text, add signatures, highlights, shapes and images
@@ -85,6 +91,7 @@ Everything runs offline on your PC.
 13. Day and night themes, larger text and reduced-motion options
 
 ## Search terms / keywords  *(max 7, each ≤ 30 characters, ≤ 21 words total)*
+
 1. pdf converter
 2. compress pdf
 3. heic to jpg
@@ -96,13 +103,15 @@ Everything runs offline on your PC.
 *(Alternatives if you want to rotate: image compressor, mp4 to mp3, reduce file size, merge pdf, duplicate finder)*
 
 ## Category
+
 Primary: **Productivity**. Secondary/subcategory: **Utilities & tools** (if offered).
 
 ## Additional info
-* **Copyright and trademark info:** © 2026 <your name>
+
+* **Copyright and trademark info:** © 2026 <your name></your>Abinash Mohanty
 * **Additional license terms:** "Dr. Doc is free and open-source software under the GNU Affero General Public License v3.0 (AGPL-3.0). Source code: https://github.com/LostRunes/transform.exe. Third-party licences: in the app under Help & manual → About Dr. Doc & open source."
-* **Developed by:** <your name>
+* **Developed by:** Yogisha Rani
 * **Support contact:** https://github.com/LostRunes/transform.exe/issues (or an email address)
 * **Website:** https://github.com/LostRunes/transform.exe
-* **Privacy policy URL:** <your hosted privacy-policy URL>
+* **Privacy policy URL:** <your hosted privacy-policy URL></your>
 * **System requirements:** Windows 10 version 1809 or later (64-bit); Microsoft Edge WebView2 Runtime (built into Windows 11 and current Windows 10). Recommended: 4 GB RAM; Microsoft Office (optional) for best Office → PDF fidelity.

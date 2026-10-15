@@ -1,4 +1,4 @@
-/// Everything Converter — Android build.
+/// Dr. Doc — Android build.
 /// A fully offline convert-anything toolbox. No network code anywhere in here:
 /// every engine runs on-device.
 library;
@@ -26,7 +26,7 @@ Future<void> main() async {
   } catch (e) {
     startupError = e.toString();
   }
-  runApp(const EverythingConverterApp());
+  runApp(const DrDocApp());
   if (startupError != null) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       toast('Started with defaults — $startupError', error: true);
@@ -34,8 +34,8 @@ Future<void> main() async {
   }
 }
 
-class EverythingConverterApp extends StatelessWidget {
-  const EverythingConverterApp({super.key});
+class DrDocApp extends StatelessWidget {
+  const DrDocApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +44,7 @@ class EverythingConverterApp extends StatelessWidget {
       builder: (context, _) {
         final skin = AppState.instance.dark ? Skin.night : Skin.day;
         return MaterialApp(
-          title: 'Everything Converter',
+          title: 'Dr. Doc',
           debugShowCheckedModeBanner: false,
           theme: buildTheme(skin),
           builder: (context, child) => ToastHost(
