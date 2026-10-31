@@ -2,11 +2,11 @@
 
 Everything needed to publish the Android app. The Windows version has its own guide in `../../store/README.md`.
 
-| File | What it's for |
-|---|---|
-| `DrDoc_<version>_android.aab` | The app bundle you upload (not committed to git; rebuild it, see below) |
-| `play-icon-512.png` | **App icon** (Store listing → Graphics) |
-| `feature-graphic-1024x500.png` | **Feature graphic** (Store listing → Graphics) |
+| File                             | What it's for                                                           |
+| -------------------------------- | ----------------------------------------------------------------------- |
+| `DrDoc_<version>_android.aab`  | The app bundle you upload (not committed to git; rebuild it, see below) |
+| `play-icon-512.png`            | **App icon** (Store listing → Graphics)                          |
+| `feature-graphic-1024x500.png` | **Feature graphic** (Store listing → Graphics)                   |
 
 App facts you'll be asked for:
 
@@ -44,31 +44,35 @@ After changing `packaging/logo.png`, regenerate the icons with `python tool/make
 ## Publishing, step by step
 
 ### 1. Developer account
+
 1. https://play.google.com/console/signup → personal account (one-time **US$25** fee, identity verification).
 2. **New personal accounts must run a closed test before production:** at least **12 testers** opted in for **14 days in a row**. Start this as early as possible. Ask friends to join; they need a Google account and an Android phone.
 
 ### 2. Create the app
+
 Play Console → **Create app**: name **Dr. Doc**, default language English (United States), **App**, **Free**, then tick the declarations.
 
 ### 3. App content (Policy → App content)
+
 Answer each section like this:
 
-| Section | Answer |
-|---|---|
-| **Privacy policy** | `https://lostrunes.github.io/Dr.-Doc-privacy-policy/` |
-| **Ads** | No, the app does not contain ads |
-| **App access** | All functionality is available without special access (no login) |
-| **Content rating** | Category **Utility, productivity, communication, or other**. Answer **No** to every question (no violence, sexual content, language, controlled substances, gambling, user-generated content sharing, no location sharing). The rating should come out as Everyone / PEGI 3 |
-| **Target audience** | 13 and over (picking under-13 brings extra Families-policy requirements). Not designed for children |
-| **News app** | No |
-| **COVID-19 tracing** | No |
-| **Data safety** | See below |
-| **Government app** | No |
-| **Financial features** | None |
-| **Health** | None (the doctor mascot is a theme, not a health app) |
-| **Photo and video permissions** | See below. **Important** |
+| Section                               | Answer                                                                                                                                                                                                                                                                                  |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Privacy policy**              | `https://lostrunes.github.io/Dr.-Doc-privacy-policy/`                                                                                                                                                                                                                                 |
+| **Ads**                         | No, the app does not contain ads                                                                                                                                                                                                                                                        |
+| **App access**                  | All functionality is available without special access (no login)                                                                                                                                                                                                                        |
+| **Content rating**              | Category **Utility, productivity, communication, or other**. Answer **No** to every question (no violence, sexual content, language, controlled substances, gambling, user-generated content sharing, no location sharing). The rating should come out as Everyone / PEGI 3 |
+| **Target audience**             | 13 and over (picking under-13 brings extra Families-policy requirements). Not designed for children                                                                                                                                                                                     |
+| **News app**                    | No                                                                                                                                                                                                                                                                                      |
+| **COVID-19 tracing**            | No                                                                                                                                                                                                                                                                                      |
+| **Data safety**                 | See below                                                                                                                                                                                                                                                                               |
+| **Government app**              | No                                                                                                                                                                                                                                                                                      |
+| **Financial features**          | None                                                                                                                                                                                                                                                                                    |
+| **Health**                      | None (the doctor mascot is a theme, not a health app)                                                                                                                                                                                                                                   |
+| **Photo and video permissions** | See below. **Important**                                                                                                                                                                                                                                                          |
 
 #### Data safety
+
 * Does your app collect or share any of the required user data types? **No.**
   (Everything is processed on the device and the app has no internet permission. On-device processing that never leaves the phone doesn't count as "collection" under Google's definitions.)
 * Is all of the user data collected by your app encrypted in transit? Not applicable (no data collected).
@@ -76,6 +80,7 @@ Answer each section like this:
 * Result shown on the listing: **"No data collected · No data shared"**.
 
 #### Photo and video permissions declaration
+
 The app declares `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO`. Google asks why it needs broad access instead of the system photo picker. Suggested answer:
 
 > Dr. Doc includes a storage clean-up tool ("Clean up") that finds duplicate and unusually large photos and videos so users can free space. Finding duplicates requires reading every photo and video in the user's media folders and comparing their contents, which the photo picker (one-off selection of a few items) cannot provide. Access is requested only when the user starts a scan on the Clean up screen; files are processed entirely on the device, nothing is uploaded (the app has no internet permission), and nothing is deleted without the user's explicit confirmation. Picking individual photos to convert uses the system photo picker.
@@ -87,11 +92,13 @@ If Google rejects this, the fallback is to remove both permissions in `android/a
 **App name** (≤ 30): `Dr. Doc`
 
 **Short description** (≤ 80):
+
 ```
 Convert, compress & scan files to PDF, offline and private. No ads, no uploads.
 ```
 
 **Full description** (≤ 4000):
+
 ```
 Dr. Doc is a friendly all-in-one file toolkit that works entirely on your phone. No account, no ads, no uploads, and no internet permission at all, so your files never leave your device.
 
@@ -132,6 +139,7 @@ A pastel retro-desktop look with day and night themes, and a little doctor masco
 ```
 
 **Graphics:**
+
 * App icon: `play-icon-512.png`
 * Feature graphic: `feature-graphic-1024x500.png`
 * **Phone screenshots:** 2–8 needed (PNG/JPEG, 16:9 or 9:16, at least 320 px on the short side). Take them on a real phone with **Power + Volume down**: the Convert screen with a few files, Compress with the slider, Scan → PDF with pages, PDF tools, Clean up, night theme. Optional tablet screenshots use the same layout in landscape.
@@ -139,17 +147,20 @@ A pastel retro-desktop look with day and night themes, and a little doctor masco
 **Category:** Productivity · **Tags:** Productivity, Tools · **Contact email:** abinash.mohanty.contact@gmail.com · **Website:** https://github.com/LostRunes/transform.exe
 
 ### 5. Closed testing (required for new personal accounts)
+
 1. Testing → **Closed testing** → Create track → **Create new release** → upload `DrDoc_1.0.0_android.aab`.
 2. Release name `1.0.0`, release notes: `First release of Dr. Doc for Android.`
 3. Add testers (an email list or a Google Group) and share the opt-in link. Get **12+ testers opted in, and keep them for 14 days**.
 4. Countries: pick India (and any others), then **Send for review**. Reviews of the first release can take a few days.
 
 ### 6. Production
+
 After the 14 days, Play Console unlocks **Apply for production access** (a short questionnaire about your testing). Once approved: Production → Create new release → reuse the same bundle (or a newer one) → roll out.
 
 ---
 
 ## Before you upload: test on a real phone
+
 Some features could only be checked on a computer here, and **video/audio compression has never run on a real device**. Install the release build on one or two phones (the closed test is the easiest way) and try:
 
 - [ ] Compress a video by 50% and to a target size (e.g. 5 MB); play the result
@@ -161,6 +172,7 @@ Some features could only be checked on a computer here, and **video/audio compre
 - [ ] Night theme, and rotate the phone
 
 ## Licences
+
 * The app code is AGPL-3.0, like the desktop version (`../../LICENSE`).
 * It uses **Syncfusion's PDF library** under the free **Syncfusion Community License**, which is only for individuals and organisations with less than US$1 million annual revenue (and ≤ 5 developers). Fine for now; revisit if Dr. Doc ever earns money at that scale.
 * PDFium (via pdfrx) is BSD/Apache. Everything else is permissive (see `flutter pub deps`).
