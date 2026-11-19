@@ -487,3 +487,31 @@ html.calm *, html.calm *::before, html.calm *::after { animation: none !importan
 /* ---------------------------------------------------------------- licence / notices viewer */
 .text-dialog { width: min(900px, 94vw); }
 .text-view { margin: 0; padding: 14px 18px; max-height: 72vh; overflow: auto; font: 12px/1.5 Consolas, monospace; white-space: pre-wrap; color: var(--text); background: var(--win-2); }
+
+/* ---------------------------------------------------------------- window buttons & full screen (winctl.js) */
+.titlebar.has-wc::after, .card > h3.has-wc::after { display: none; }
+.wc-group { display: flex; gap: 5px; flex: none; margin-left: auto; }
+.wc { width: 20px; height: 18px; padding: 0; border: 2px solid var(--title-ink); border-radius: 5px; background: transparent;
+  color: var(--title-ink); cursor: pointer; display: grid; place-items: center; opacity: .8; position: relative; }
+.wc:hover, .wc:focus-visible { opacity: 1; background: color-mix(in srgb, var(--title-ink) 18%, transparent); }
+.wc-min::before { content: ""; width: 9px; height: 2px; background: currentColor; margin-top: 6px; }
+.wc-max::before { content: ""; width: 8px; height: 7px; border: 1.6px solid currentColor; border-radius: 1px; }
+.wc-max.on::before { width: 6px; height: 5px; box-shadow: 2px -2px 0 -0.4px var(--title-2), 2px -2px 0 1.2px currentColor; }
+.titlebar .tb-x { margin-left: 0; }
+
+/* minimised: only the title bar stays */
+.win-min > :not(.titlebar):not(h3:first-child) { display: none !important; }
+.win-min.card { padding-bottom: 0; }
+.win-min.card > h3:first-child { margin-bottom: 0; border-radius: calc(var(--r) - 2px); border-bottom: 0; }
+
+/* full screen: the workspace (or a viewer dialog) fills the screen, above the sidebar and taskbar */
+body.has-full .app { z-index: 25; }
+.view.is-full { position: fixed; inset: 0; z-index: 25; overflow: auto; padding: 14px 16px 18px; margin: 0;
+  background-color: var(--sky-1); background-image: linear-gradient(180deg, var(--sky-1), var(--sky-2)); }
+.view.is-full .ed { height: calc(100vh - 34px); }
+.view.is-full .of { height: calc(100vh - 34px); }
+.view.is-full .ve { height: calc(100vh - 34px); }
+.view.is-full .help { height: calc(100vh - 34px); }
+.dialog.is-full { width: 100vw !important; max-width: none; height: 100vh; max-height: none; border-radius: 0; animation: none; transform: none; }
+.dialog.org-preview.is-full .org-big { max-height: calc(100vh - 140px); }
+.dialog.text-dialog.is-full .text-view { max-height: calc(100vh - 40px); }

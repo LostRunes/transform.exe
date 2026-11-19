@@ -17,6 +17,8 @@
 </ol>
 <h4>Where do my files go?</h4>
 <p>Results are saved to the folder shown next to <b>save to</b> at the top (normally <i>Downloads\\Dr. Doc</i>). Click it to choose another folder, or <b>↗</b> to open it. Dr. Doc never overwrites anything: if a name is taken, it adds <i>(1)</i>, <i>(2)</i>… Your original files are never changed.</p>
+<h4>Window buttons</h4>
+<p>Every window's title bar has two working buttons: <b>▁ minimise</b> folds the window down to its title bar, and <b>▢ maximise</b> shows the whole workspace <b>full screen</b>. Great for reading a document, editing a PDF or watching the video timeline. Double-clicking a title bar does the same. Press ${"<kbd>Esc</kbd>"} or the button again to go back.</p>
 <h4>Not sure where something is?</h4>
 <p>Press ${"<kbd>Ctrl</kbd>+<kbd>K</kbd>"} (or the 🔍 button) and type what you want to do, like "combine photos into pdf" or "make video smaller".</p>`],
 
@@ -144,7 +146,8 @@
 <tr><td>${k("F1")}</td><td>Open this manual</td></tr>
 <tr><td>${k("Alt")} + ${k("1")}…${k("9")}</td><td>Switch workspace (in sidebar order)</td></tr>
 <tr><td>${k("Tab")} / ${k("Shift")}+${k("Tab")}</td><td>Move between buttons and fields</td></tr>
-<tr><td>${k("Esc")}</td><td>Close a dialog, preview, menu or the tour</td></tr>
+<tr><td>${k("Esc")}</td><td>Close a dialog, preview, menu or the tour; leave full screen</td></tr>
+<tr><td>${k("F11")}</td><td>Show the current workspace full screen (again to leave)</td></tr>
 <tr><td colspan="2"><b>Arranging files</b></td></tr>
 <tr><td>${k("←")} ${k("→")}</td><td>Move between cards</td></tr>
 <tr><td>${k("Alt")} + ${k("←")} / ${k("→")}</td><td>Move the card earlier / later</td></tr>
