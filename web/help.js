@@ -80,6 +80,7 @@
     ["pdf", "PDF tools", "merge split extract delete reorder pages rotate watermark page numbers password protect unlock images", `
 <ul>
 <li><b>Merge PDFs</b>: combine PDFs and pictures, arranged visually (see <a data-help="combine">Combine files</a>).</li>
+<li><b>Organize pages</b>: open a PDF and see every page as a thumbnail. Click pages to select them, then <b>remove</b> or <b>rotate</b> them; <b>drag</b> to reorder; hover a page and click <b>＋</b> to add pages right there, from another PDF, from pictures, or a blank page. ${"<kbd>Delete</kbd>"} removes, ${"<kbd>R</kbd>"} rotates, ${"<kbd>Alt</kbd>+<kbd>←</kbd>/<kbd>→</kbd>"} moves, ${"<kbd>Ctrl</kbd>+<kbd>Z</kbd>"} undoes. <b>Save</b> writes a new PDF; the original is never changed.</li>
 <li><b>Split PDF</b>: every page, every N pages, or custom ranges like <code>1-3; 4-10; 11-</code>.</li>
 <li><b>Extract / delete / reorder pages</b>: keep or remove pages; list them in a new order like <code>3,1,2,4-</code>.</li>
 <li><b>Rotate pages</b>, <b>Watermark</b>, <b>Add page numbers</b> (format such as <code>{n} / {total}</code>).</li>

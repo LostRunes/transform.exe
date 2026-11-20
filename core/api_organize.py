@@ -57,3 +57,24 @@ def build():
         return outs
     job = jobs.start_callable(title, work)
     return jsonify({"ok": True, "job": job.to_dict()})
+
+
+@bp.post("/api/organize/assemble")
+def assemble():
+    """Save the edited page list of the "Organize pages" tool as a new PDF."""
+    d = request.json
+    pages = d.get("pages") or []
+    if not pages:
+        raise ValueError("There are no pages left. Add at least one page before saving.")
+    out_dir = Path(d.get("out_dir") or DEFAULT_OUTPUT)
+    name = (d.get("name") or "organized").strip().removesuffix(".pdf") or "organized"
+    name = "".join("_" if c in r'\/:*?"<>|' else c for c in name)  # characters Windows forbids
+
+    def work(job):
+        out = job.work / f"{name}.pdf"
+        organize.assemble(pages, out, progress=lambda f, m: job.sub_progress(f, m))
+        delivered = jobs._deliver([out], out_dir)
+        job.note(f"{Path(delivered[0]).name}: {len(pages)} page{'s' if len(pages) != 1 else ''}")
+        return delivered
+    job = jobs.start_callable(f"Save {name}.pdf ({len(pages)} pages)", work)
+    return jsonify({"ok": True, "job": job.to_dict()})

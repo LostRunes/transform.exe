@@ -594,6 +594,7 @@ function renderToolPage(t) {
     h("div", { class: "tool-head" }, h("div", { class: "ti" }, t.icon), h("div", {}, h("h2", {}, t.name), h("p", {}, t.desc || ""))),
     dropzone((fs) => addFiles(fs), shortAccepts(t)));
   if (ORGANISED_TOOLS.includes(t.id) && window.Organizer) return renderOrganisedTool(t, v, files);
+  if (t.id === "pdf_organize" && window.PageOrganizer) return window.PageOrganizer.render(t, v, files);
   if (files.length) {
     const list = h("div", { class: "files" });
     const rerender = () => renderToolPage(t);

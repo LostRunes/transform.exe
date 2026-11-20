@@ -172,3 +172,61 @@ def group_name(items: list[dict], group: list[int], total_groups: int, base: str
     if len(group) == 1:
         return first
     return f"{first} + {len(group) - 1} more"
+
+
+# ---------------------------------------------------------------- organise pages of one PDF
+
+def assemble(pages: list[dict], out: Path, progress=None):
+    """Build a PDF from an edited page list (the "Organize pages" tool).
+
+    Each entry is one output page, in order:
+      {"kind": "pdf",   "path": ..., "page": n, "rotate": deg}   a page of any PDF
+      {"kind": "image", "path": ..., "rotate": deg, "w": pt, "h": pt}   a picture, fitted on a w×h page
+      {"kind": "blank", "w": pt, "h": pt}                       an empty page
+    """
+    if not pages:
+        raise ValueError("There are no pages left. Add at least one page before saving.")
+    doc = fitz.open()
+    sources = {}
+    try:
+        for k, p in enumerate(pages):
+            if progress:
+                progress(k / len(pages), f"Page {k + 1} of {len(pages)}")
+            kind = p.get("kind", "pdf")
+            rotate = int(p.get("rotate") or 0) % 360
+            if kind == "blank":
+                doc.new_page(width=float(p.get("w") or 595), height=float(p.get("h") or 842))
+            elif kind == "image":
+                im = ImageOps.exif_transpose(Image.open(p["path"]))
+                if getattr(im, "is_animated", False):
+                    im.seek(0)
+                if rotate:
+                    im = im.rotate(-rotate, expand=True)
+                buf = io.BytesIO()
+                _flatten(im).save(buf, "JPEG", quality=92)
+                w, h = float(p.get("w") or 595), float(p.get("h") or 842)
+                if (im.width > im.height) != (w > h):  # landscape picture: turn the page to match
+                    w, h = h, w
+                page = doc.new_page(width=w, height=h)
+                page.insert_image(page.rect, stream=buf.getvalue(), keep_proportion=True)
+            else:
+                path = p["path"]
+                if path not in sources:
+                    src = fitz.open(path)
+                    if src.needs_pass:
+                        raise ValueError(f"{Path(path).name} is password-protected. Remove the password first (PDF tools → Remove password).")
+                    sources[path] = src
+                src = sources[path]
+                n = int(p["page"])
+                if not 0 <= n < src.page_count:
+                    raise ValueError(f"{Path(path).name} has no page {n + 1}")
+                doc.insert_pdf(src, from_page=n, to_page=n)
+                if rotate:
+                    last = doc[-1]
+                    last.set_rotation((last.rotation + rotate) % 360)
+        doc.save(out, garbage=3, deflate=True)
+    finally:
+        for s in sources.values():
+            s.close()
+        doc.close()
+    return out

@@ -181,6 +181,10 @@ def P(name, label, type="text", default=None, **kw):
 PAGES = P("pages", "Pages (e.g. 1-3, 5, 8-; blank = all)", "text", "")
 
 
+def _page_organizer_only(*_args, **_kw):
+    raise ValueError("Organize pages works on its own screen: open it from PDF tools.")
+
+
 def SIZE(quality_label=None, default="percent"):
     """The shared "How small?" controls: a % slider, or a typed-in target size."""
     opts = [["percent", "Shrink by a percentage"], ["target", "Hit a target size"]]
@@ -201,6 +205,8 @@ TOOLS = [
     dict(id="pdf_merge", cat="PDF", name="Merge PDFs", icon="⊕", multi=True, inputs=["pdf"] + IMG + ["svg"],
          desc="Combine files into one PDF in the order listed (drag to reorder). Images are added as pages.",
          out_ext="pdf", fn=conv_pdf.tool_merge, params=[]),
+    dict(id="pdf_organize", cat="PDF", name="Organize pages", icon="▦", inputs=["pdf"] + IMG, fn=_page_organizer_only,
+         desc="See every page of a PDF, then remove, rotate, reorder, or add pages anywhere: from other PDFs, pictures, or blank."),
     dict(id="pdf_split", cat="PDF", name="Split PDF", icon="✂", inputs=["pdf"], fn=conv_pdf.tool_split,
          desc="Split into single pages, fixed-size chunks or custom ranges.",
          params=[P("mode", "Split mode", "select", "every", options=[["every", "Every page"], ["chunks", "Every N pages"], ["ranges", "Custom ranges"]]),
